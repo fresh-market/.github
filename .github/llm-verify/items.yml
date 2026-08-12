@@ -3,7 +3,7 @@
 # 생성 명령: gen_items.py <dir> 'qa-*.md' 'common'
 version: 1
 source: common
-count: 217
+count: 219
 items:
   - {id: CMP-2-01, doc: qa-compatibility.md, ch: 2, level: 설계, gate: G-DESIGN, gates: [local, ci], ci_stage: 2, domains: [application], title: "이번 변경이 하위 호환을 깨는지 확인했는가"}
   - {id: CMP-2-02, doc: qa-compatibility.md, ch: 2, level: 설계, gate: G-DESIGN, gates: [local, ci], ci_stage: 2, domains: [application], title: "깨는 변경이라면 새 메이저 버전으로 분리했는가"}
@@ -34,6 +34,8 @@ items:
   - {id: DI-3-02, doc: qa-data-integrity.md, ch: 3, level: 설계, gate: G-DESIGN, gates: [local, ci], ci_stage: 2, domains: [database], title: "값 범위 규칙이 CHECK 제약으로도 표현되어 있는가"}
   - {id: DI-3-03, doc: qa-data-integrity.md, ch: 3, level: 설계, gate: G-DESIGN, gates: [local, ci], ci_stage: 2, domains: [database], title: "참조 무결성이 필요한 곳에 외래 키가 있는가"}
   - {id: DI-3-04, doc: qa-data-integrity.md, ch: 3, level: 설계, gate: G-DESIGN, gates: [local, ci], ci_stage: 2, domains: [database], title: "NOT NULL이 필요한 컬럼에 지정되어 있는가"}
+  - {id: DI-3-05, doc: qa-data-integrity.md, ch: 3, level: 코드, gate: G-PR, gates: [local, ci], ci_stage: 2, domains: [database], title: "두 외래 키가 같은 조상을 가리켜야 한다면 그 조합을 검증하는가"}
+  - {id: DI-3-06, doc: qa-data-integrity.md, ch: 3, level: 코드, gate: G-PR, gates: [local, ci], ci_stage: 2, domains: [database], title: "자식 행 합계가 부모의 상한을 넘지 않도록 잠그고 검사하는가"}
   - {id: DI-4-01, doc: qa-data-integrity.md, ch: 4, level: 코드, gate: G-PR, gates: [local, ci], ci_stage: 2, domains: [database], title: "트랜잭션 범위가 비즈니스 단위와 일치하는가"}
   - {id: DI-4-02, doc: qa-data-integrity.md, ch: 4, level: 코드, gate: G-PR, gates: [local, ci], ci_stage: 2, domains: [database], title: "트랜잭션 안에서 외부 API를 호출하지 않는가"}
   - {id: DI-4-03, doc: qa-data-integrity.md, ch: 4, level: 코드, gate: G-PR, gates: [local, ci], ci_stage: 2, domains: [database], defers_to: [INF-1-07], title: "트랜잭션이 필요 이상으로 길지 않은가"}
