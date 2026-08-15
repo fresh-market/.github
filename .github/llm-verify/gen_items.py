@@ -87,7 +87,7 @@ DOMAIN_OVERRIDE = {
 }
 
 # 중복 지적 방지. 대상 항목이 위반이면 이쪽은 발화하지 않는다.
-# 근거는 LGU-2/infra 의 INFRAREVIEW.md "중복 지적 방지" 절에 있다
+# 근거는 fresh-market/fm-infra 의 INFRAREVIEW.md "중복 지적 방지" 절에 있다
 DEFERS = {
     "DI-2-01": ["INF-1-04", "INF-1-05"],
     "DI-2-02": ["INF-1-08"],

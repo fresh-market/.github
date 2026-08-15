@@ -1,7 +1,7 @@
 # G-PR 본체 (재사용 워크플로)
 #
 # 각 저장소의 .github/workflows/llm-verify.yml 이 이것을 호출한다.
-# 실행 순서의 설명은 LGU-2/be 의 docs/verification/verification-workflow.md 에 있다.
+# 실행 순서의 설명은 fresh-market/fm-backend 의 docs/verification/verification-workflow.md 에 있다.
 #
 # 이 게이트는 병합을 막지 않는다. 재현율이 측정되지 않았기 때문이다.
 # 차단은 G-BUILD(커버리지, Blocker)와 G-RELEASE 가 한다.
@@ -13,10 +13,10 @@ on:
     inputs:
       common_repo:
         type: string
-        default: LGU-2/.github
+        default: fresh-market/.github
       infra_repo:
         type: string
-        default: LGU-2/infra
+        default: fresh-market/fm-infra
     secrets:
       GEMINI_API_KEY:
         required: true

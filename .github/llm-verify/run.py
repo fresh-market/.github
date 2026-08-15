@@ -2,7 +2,7 @@
 """
 G-PR 실행기.
 
-LGU-2/be 의 docs/verification/verification-workflow.md "진입점부터의 실행 순서" 4~16 단계를 수행한다.
+fresh-market/fm-backend 의 docs/verification/verification-workflow.md "진입점부터의 실행 순서" 4~16 단계를 수행한다.
 워크플로 yml 은 체크아웃과 코멘트만 하고, 판정 파이프라인은 전부 여기 있다.
 
 두 모드로 나뉜다.

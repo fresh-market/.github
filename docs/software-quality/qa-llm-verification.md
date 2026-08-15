@@ -122,7 +122,7 @@ LLM 게이트보다 먼저 도는 결정론적 게이트다. 7.1절의 G1 등급
 
 **둘 중 하나라도 실패하면 병합을 차단한다.** 브랜치 보호의 필수 상태 검사가 강제 수단이다.
 
-점검 항목과 Gradle 설정은 `LGU-2/be`의 `docs/code-architecture/build-gate-guideline.md`에 있다 (`BLD-*`).
+점검 항목과 Gradle 설정은 `fresh-market/fm-backend`의 `docs/code-architecture/build-gate-guideline.md`에 있다 (`BLD-*`).
 
 **두 게이트의 판정 주체를 분리한 것이 중요하다.**
 SonarQube Quality Gate에서 커버리지 조건을 제거하고 Gradle이 판정한다.
@@ -188,8 +188,8 @@ G-PR은 병합 판단에 쓰이므로 **PR이 병합되면 무엇이 들어가�
 
 | 단계 | 항목 | 건수 | 수행 |
 |------|------|------|------|
-| 1단계 | `LGU-2/backend` 코드 관용과 패턴 | 250 | **항상** |
-| 2단계 | `LGU-2/.github` 품질 속성 + `LGU-2/infra` 인프라 제약 | 204 | **조건부** |
+| 1단계 | `fresh-market/fm-backend` 코드 관용과 패턴 | 250 | **항상** |
+| 2단계 | `fresh-market/.github` 품질 속성 + `fresh-market/fm-infra` 인프라 제약 | 204 | **조건부** |
 
 `items.yml`의 `ci_stage` 필드가 이 구분을 담는다.
 
@@ -256,8 +256,8 @@ G-LOCAL을 건너뛰어도 G-PR이 전부 본다. **개발자 규율에 의존�
 
 | 층 | 내용 | 위치 |
 |----|------|------|
-| 점검 항목 | 무엇을 점검하는가. 수치는 대부분 등급 C 예시값 | `LGU-2/.github` 의 `docs/software-quality/` |
-| 확정값 | 이 팀이 실제로 정한 목표치와 보장 메커니즘 | `LGU-2/infra` 의 `docs/system-design/` |
+| 점검 항목 | 무엇을 점검하는가. 수치는 대부분 등급 C 예시값 | `fresh-market/.github` 의 `docs/software-quality/` |
+| 확정값 | 이 팀이 실제로 정한 목표치와 보장 메커니즘 | `fresh-market/fm-infra` 의 `docs/system-design/` |
 
 quality-attributes.md의 "도메인에 맞게 채워야 하는 부분"이 두 층의 관계를 규정한다.
 앞 층이 빈칸을 만들고 뒤 층이 채운다.
@@ -290,7 +290,7 @@ quality-attributes.md의 "도메인에 맞게 채워야 하는 부분"이 두 �
 ```yaml
 - uses: actions/checkout@v4
   if: needs.scope.outputs.needs-baseline-values == 'true'
-  with: { repository: LGU-2/infra, path: .design }
+  with: { repository: fresh-market/fm-infra, path: .design }
 ```
 
 효과가 두 가지다.
@@ -534,8 +534,8 @@ items:
 
 | 저장소 | 파일 | 건수 |
 |--------|------|------|
-| `LGU-2/.github` | `.github/llm-verify/items.yml` | 217 |
-| `LGU-2/backend` | `.github/llm-verify/items.yml` | 250 |
+| `fresh-market/.github` | `.github/llm-verify/items.yml` | 217 |
+| `fresh-market/fm-backend` | `.github/llm-verify/items.yml` | 250 |
 
 하나로 합치면 한쪽 문서가 바뀔 때마다 다른 저장소의 파일을 갱신해야 한다.
 2.1절이 두 층을 각자의 저장소에 둔 것과 같은 이유이며, 워크플로가 실행 시점에 병합한다.
@@ -584,7 +584,7 @@ LLM은 활성화된 ID 목록을 순회하며 항목마다 다음 구조로만 �
 {
   "id": "REL-5-01",
   "verdict": "CONFLICTING_BASELINE",
-  "evidence": "LGU-2/infra docs/system-design/백엔드공통_앱과DB_장애대응구조.md:25",
+  "evidence": "fresh-market/fm-infra docs/system-design/백엔드공통_앱과DB_장애대응구조.md:25",
   "conflict": [
     { "source": "앱과DB 4.1절", "value": "공유 의존성 제외" },
     { "source": "기술스택 4.2절", "value": "include: db, diskSpace" }
@@ -659,7 +659,7 @@ LLM 리뷰도 알림과 같은 성질을 갖는다. 늘어나기만 하고 줄�
 이 설계로 217건 중 몇 건을 실제로 판정할 수 있는지 계산한다.
 
 이 장의 분류는 초판에서 한 차례 전면 개정되었다.
-초판은 확정값 문서(`LGU-2/infra`의 `docs/system-design/`, 9개 문서 5,706줄)의 **존재를 모른 채** 작성되었고, ADR이 아직 없다는 전제로 계산했다.
+초판은 확정값 문서(`fresh-market/fm-infra`의 `docs/system-design/`, 9개 문서 5,706줄)의 **존재를 모른 채** 작성되었고, ADR이 아직 없다는 전제로 계산했다.
 실제로는 ADR 34건(INF-01~34)을 포함한 확정값 층이 이미 있었다.
 7.2절이 그 실제 상태를, 7.3절 이후가 그것을 반영한 수치를 담는다.
 
@@ -697,7 +697,7 @@ LLM 리뷰도 알림과 같은 성질을 갖는다. 늘어나기만 하고 줄�
 **초판의 G3 61건이 G3와 G4로 갈렸다.** 확정값 문서가 있다고 모든 값이 정해진 것은 아니다.
 
 **소유권 재배분으로 6건이 backend 저장소로 이관되었다.** 도메인 경계 3건(`MNT-1-*`), 테스트 실행 시간 1건, 페이지네이션 1건, 그리고 common 내부 중복이던 checked 예외 롤백 1건이다.
-이관된 항목은 사라진 것이 아니라 `LGU-2/backend`의 `docs/code-architecture/`가 판정한다.
+이관된 항목은 사라진 것이 아니라 `fresh-market/fm-backend`의 `docs/code-architecture/`가 판정한다.
 
 ### 7.2 확정값 문서의 실제 상태
 
@@ -847,7 +847,7 @@ G3        : 42 × 0.80 = 33.6
 
 #### 이 수치가 능력치이지 현황이 아니라는 점
 
-**`LGU-2/backend` 저장소에는 현재 `README.md` 하나뿐이다.**
+**`fresh-market/fm-backend` 저장소에는 현재 `README.md` 하나뿐이다.**
 소스 코드도 `application.yml`도 없다. 즉 지금 게이트를 돌리면 판정 대상이 0건이다.
 
 55%는 "코드가 있을 때 217건 중 몇 건을 판정할 수 있는가"이지 "지금 몇 건이 지켜지고 있는가"가 아니다.
@@ -856,7 +856,7 @@ G3        : 42 × 0.80 = 33.6
 ### 7.5 커버리지를 올리는 방법
 
 초판은 "ADR을 `docs/adr/`에 쌓는 것이 첫 번째 조치"라고 적었다. **그 전제는 틀렸다.**
-ADR은 이미 34건이 있고 `LGU-2/infra`의 `docs/system-design/`에 있다. 만드는 작업이 아니라 이미 있는 것을 쓰는 작업이다.
+ADR은 이미 34건이 있고 `fresh-market/fm-infra`의 `docs/system-design/`에 있다. 만드는 작업이 아니라 이미 있는 것을 쓰는 작업이다.
 
 남은 지렛대는 다음 셋이다.
 
@@ -939,9 +939,9 @@ echo "합계: $(grep -h $EX '^\* `\[' qa-*.md | wc -l | tr -d ' ')건"
 
 | 저장소 | 건수 | 다루는 것 |
 |--------|------|-----------|
-| `LGU-2/.github` | 217 | 일반 품질 속성. "얼마나 잘 하는가" |
-| `LGU-2/backend` | 250 | 코드 관용과 패턴. "어떻게 쓰는가" |
-| `LGU-2/infra` | 100 | 인프라 결정이 코드에 부과하는 제약 |
+| `fresh-market/.github` | 217 | 일반 품질 속성. "얼마나 잘 하는가" |
+| `fresh-market/fm-backend` | 250 | 코드 관용과 패턴. "어떻게 쓰는가" |
+| `fresh-market/fm-infra` | 100 | 인프라 결정이 코드에 부과하는 제약 |
 | 합계 | **567** | |
 
 7장의 커버리지 계산은 `.github`의 217건만을 분모로 한다.
@@ -1049,7 +1049,7 @@ EOF
 
 | 작업 | 산출물 | 비고 |
 |------|--------|------|
-| 워크플로 본체 골격 | `LGU-2/.github`의 `.github/workflows/llm-verify.yml` | 실행은 못 해도 데이터가 실제로 맞물리는지는 짜 봐야 드러난다 |
+| 워크플로 본체 골격 | `fresh-market/.github`의 `.github/workflows/llm-verify.yml` | 실행은 못 해도 데이터가 실제로 맞물리는지는 짜 봐야 드러난다 |
 | 호출자 워크플로 | 각 저장소 `.github/workflows/` 3줄 | 본체를 `uses:`로 부른다 |
 | `known-conflicts.yml` | 7.2절의 확정값 모순 4건 등록 | 모순 해소가 보류된 상태이므로 목록이 필요하다 |
 | backend 항목의 층위 태깅 | 250건에 `[코드]`/`[설계]`/`[인프라]` 부여 | 지금은 전부 `코드`로 기본 설정되어 `level_verified: false`다 |
@@ -1058,7 +1058,7 @@ EOF
 
 | 작업 | 막힌 이유 | 해소 조건 |
 |------|-----------|-----------|
-| **재현율 5개 실측** | 판정 대상 코드가 없다. `LGU-2/backend`에 문서와 README뿐이다 | PR 20~30건을 돌리면 항목별 재현율 분포가 나온다 |
+| **재현율 5개 실측** | 판정 대상 코드가 없다. `fresh-market/fm-backend`에 문서와 README뿐이다 | PR 20~30건을 돌리면 항목별 재현율 분포가 나온다 |
 | **첫 판정 비용 결정** | 동일 | `controller` 규칙이 214건을 켠다. 항목별 `NOT_APPLICABLE` 비율을 보면 좁힐 범위가 정해진다 |
 | **차단 임계 결정** | 측정 이력이 없다 | 6장 기준은 "정확도 90% 이상만 차단"이다. 초기에는 전부 비차단으로 시작한다 |
 | **사고 토큰 규모 측정** | `gemini-2.5-flash` 는 thinking 토큰이 출력에 산입된다 | 첫 실행에서 측정. 과하면 thinking budget 을 조정 |

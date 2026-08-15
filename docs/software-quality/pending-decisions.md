@@ -13,14 +13,14 @@
 등급 C는 "적당히"라고 두면 판정이 사람마다 달라지므로 구체적인 숫자를 적어 둔 것일 뿐,
 검증된 권장값이 아니다. 이 문서는 그중 아직 채워지지 않은 것을 추린다.
 
-`LGU-2/infra`의 미결정 값은 그쪽 [pending-decisions.md](https://github.com/LGU-2/infra/blob/main/docs/infra-review/pending-decisions.md)에 있다.
-`LGU-2/be`에는 미결정 값이 없다. 코드 관용과 패턴을 다루므로 임계치가 없기 때문이다.
+`fresh-market/fm-infra`의 미결정 값은 그쪽 [pending-decisions.md](https://github.com/fresh-market/fm-infra/blob/main/docs/infra-review/pending-decisions.md)에 있다.
+`fresh-market/fm-backend`에는 미결정 값이 없다. 코드 관용과 패턴을 다루므로 임계치가 없기 때문이다.
 
 ---
 
 ## 1. 확정값이 이미 채운 것
 
-**이 문서들을 고칠 필요는 없다.** 등급 C로 두되, 게이트는 `LGU-2/infra`의 확정값으로 판정한다.
+**이 문서들을 고칠 필요는 없다.** 등급 C로 두되, 게이트는 `fresh-market/fm-infra`의 확정값으로 판정한다.
 두 층이 다르게 말하면 확정값이 이긴다. 근거가 더 구체적이기 때문이다.
 
 | 여기의 예시값 | 위치 | 확정값 |
@@ -122,5 +122,5 @@
 
 * 등급 정의와 층위: [quality-attributes.md](./quality-attributes.md)
 * 게이트 설계: [qa-llm-verification.md](./qa-llm-verification.md) 7.2절
-* 확정값 쪽 미결정: `LGU-2/infra`의 `docs/infra-review/pending-decisions.md`
+* 확정값 쪽 미결정: `fresh-market/fm-infra`의 `docs/infra-review/pending-decisions.md`
 * 문서 간 모순 목록(기계 판독): `.github/llm-verify/known-conflicts.yml`

@@ -161,7 +161,7 @@ public record RecordListResponse(
 API만 계약이 아니다. DB 스키마와 메시지 스키마도 계약이다.
 
 > 이 절은 `qa-flexibility.md` 5장과 세 항목이 겹친다.
-> 컬럼 제거 단계는 `LGU-2/infra`의 `INF-6-01`이 이 인프라의 확정 규칙으로 더 구체적이므로,
+> 컬럼 제거 단계는 `fresh-market/fm-infra`의 `INF-6-01`이 이 인프라의 확정 규칙으로 더 구체적이므로,
 > 겹칠 때는 그쪽만 발화하고 여기는 억제된다.
 
 점검 항목

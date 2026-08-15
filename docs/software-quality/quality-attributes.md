@@ -65,7 +65,7 @@
 | 속성 간 트레이드오프 | [qa-tradeoffs.md](./qa-tradeoffs.md) | 설계 판단 기준 |
 | LLM 기반 품질 검증 설계 | [qa-llm-verification.md](./qa-llm-verification.md) | 검증 자동화 |
 | 미결정 값 | [pending-decisions.md](./pending-decisions.md) | 근거 없는 예시값 목록 |
-| 검증 실행 방법과 워크 플로우 | [LGU-2/be 의 docs/verification/](https://github.com/LGU-2/be/blob/main/docs/verification/verification-guide.md) | 사용 설명 |
+| 검증 실행 방법과 워크 플로우 | [fresh-market/fm-backend 의 docs/verification/](https://github.com/fresh-market/fm-backend/blob/main/docs/verification/verification-guide.md) | 사용 설명 |
 
 ### 별도 문서를 두지 않은 특성
 
@@ -114,7 +114,7 @@ ISO 25010의 복구성(recoverability)은 시스템이 **복구 가능한 성질
 
 **층위는 판정 대상이 무엇인지를 말하는 것이지, PR 에서 보는지 아닌지를 말하는 것이 아니다.**
 
-PR 에서 무엇을 판정할지는 `LGU-2/be` 의 `.github/llm-verify/anchors.yml` 이 정한다.
+PR 에서 무엇을 판정할지는 `fresh-market/fm-backend` 의 `.github/llm-verify/anchors.yml` 이 정한다.
 바꾼 파일이 규칙을 트리거하고, 규칙의 `levels` 가 어느 층위를 켤지 정한다.
 대부분의 규칙이 `[코드]`, `[설계]`, `[인프라]` 를 함께 켠다.
 마이그레이션 파일 하나로 데이터 모델 결정(`[설계]`)을 판정할 수 있고,
