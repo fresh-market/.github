@@ -12,10 +12,11 @@ items.yml 을 직접 고치면 다음 생성 때 조용히 덮어써진다.
             -o items.yml
 
     # backend, infra. 태그가 없어 기본값을 준다
-    python3 gen_items.py ../../docs/code-architecture '*-guideline.md' backend 코드 \\
-            -o ../../../backend/.github/llm-verify/items.yml
-    python3 gen_items.py ../../docs/infra-review '*-guideline.md' infra 코드 \\
-            -o ../../../infra/.github/llm-verify/items.yml
+    # 경로는 예시가 아니라 자리표시다. 저장소 이름은 바뀌므로 여기에 적지 않는다
+    python3 gen_items.py <backend 경로>/docs/code-architecture '*-guideline.md' backend 코드 \\
+            -o <backend 경로>/.github/llm-verify/items.yml
+    python3 gen_items.py <infra 경로>/docs/infra-review '*-guideline.md' infra 코드 \\
+            -o <infra 경로>/.github/llm-verify/items.yml
 
 읽는 형식은 두 가지다.
 
