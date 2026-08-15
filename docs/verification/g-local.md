@@ -220,7 +220,7 @@ echo "docs/llm-review/${LOGIN}_${STAMP}_llm-review.md"
 | | G-LOCAL (이 명령) | G-PR (CI) |
 |---|---|---|
 | 판정 주체 | Claude | gemini-2.5-flash |
-| 범위 | 마지막 커밋 | PR 누적 diff |
+| 범위 | push 하지 않은 커밋 (인자로 조절) | PR 누적 diff |
 | 단계 | 없음. 활성 항목 전부 | 1단계 backend, 2단계 common+infra 조건부 |
 | 차단 | 안 함 | 안 함 |
 
