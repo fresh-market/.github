@@ -1,7 +1,7 @@
 # G-LOCAL 판정 절차
 
 **도구에 매이지 않는 문서다.** Claude Code, 다른 CLI 에이전트, 사람 누구든 이 절차를 따르면 된다.
-도구별 진입점(`.claude/commands/v-local.md` 등)은 이 문서를 가리키기만 한다.
+도구별 진입점(`.claude/commands/v-commit.md` 등)은 이 문서를 가리키기만 한다.
 
 계산은 `verify.sh` 가 하고 **판정은 이 문서를 읽는 쪽이 한다.**
 LLM API 를 부르는 것은 CI 의 G-PR 뿐이다. 여기서는 API 를 쓰지 않는다.
