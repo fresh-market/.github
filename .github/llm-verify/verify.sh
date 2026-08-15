@@ -6,10 +6,12 @@
 # Gemini API 는 CI 의 G-PR 에서만 돈다. 무료 티어 한도를 로컬이 나눠 쓰면
 # 작업 중 반복 실행하는 것만으로 CI 가 밀린다.
 #
-#   verify.sh                      계산하고 지시문을 낸다. 붙여넣어 쓴다
+#   verify.sh                      전체. 아직 push 하지 않은 커밋 전부
+#   verify.sh HEAD                 최신 커밋 1개
+#   verify.sh HEAD~5               최신 커밋 5개
+#   verify.sh <base> <head>        두 개를 주면 그 구간을 그대로 쓴다
 #   verify.sh --agent claude       지시문을 그 명령에 넘긴다
 #   verify.sh --agent "gemini -p"  임의의 CLI 에 넘긴다
-#   verify.sh HEAD~5               범위를 지정한다
 #   verify.sh --target ../fm-infra 판정 대상을 바꾼다 (기본은 현재 디렉터리)
 #
 # 차단하지 않는다. 작업 중 반복 실행하는 도구이므로 중간 상태에서 위반이 나오는 것이 정상이다.
@@ -24,12 +26,25 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --target) TARGET=$2; shift 2 ;;
         --agent)  AGENT=$2;  shift 2 ;;
-        -h|--help) sed -n '3,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '3,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) ARGS+=("$1"); shift ;;
     esac
 done
-BASE=${ARGS[0]:-HEAD~1}
+# 인자는 "몇 개" 를 뜻한다. git 의 base..head 와 다르게 읽는다.
+#   없음      전체. 아직 push 하지 않은 커밋 전부
+#   HEAD      최신 1개    -> HEAD~1..HEAD
+#   HEAD~N    최신 N개    -> HEAD~N..HEAD
+#   둘을 주면 그 구간을 그대로 쓴다
 HEAD_REF=${ARGS[1]:-HEAD}
+if [ ${#ARGS[@]} -eq 0 ]; then
+    BASE=""
+elif [ ${#ARGS[@]} -ge 2 ]; then
+    BASE=${ARGS[0]}
+elif [ "${ARGS[0]}" = "HEAD" ]; then
+    BASE=HEAD~1
+else
+    BASE=${ARGS[0]}
+fi
 
 # --- 기준 저장소 --------------------------------------------------------
 # common 은 이 스크립트가 들어 있는 저장소다. 이름을 알 필요가 없다.
@@ -59,13 +74,28 @@ for d in "$TARGET" "$COMMON" "$INFRA"; do
     fi
 done
 
+# 인자가 없으면 push 하지 않은 구간 전부를 본다.
+# upstream 이 없으면 origin/HEAD 와 비교하고, 그것도 없으면 범위를 정할 수 없다.
+if [ -z "$BASE" ]; then
+    if (cd "$TARGET" && git rev-parse --verify -q '@{u}' >/dev/null 2>&1); then
+        BASE='@{u}'
+    elif (cd "$TARGET" && git rev-parse --verify -q origin/HEAD >/dev/null 2>&1); then
+        BASE='origin/HEAD'
+    else
+        echo "전체 범위를 정할 수 없다. upstream 도 origin/HEAD 도 없다." >&2
+        echo "HEAD 나 HEAD~N 으로 범위를 직접 준다." >&2
+        exit 2
+    fi
+fi
+
 BASE_SHA=$(cd "$TARGET" && git rev-parse "$BASE")
 HEAD_SHA=$(cd "$TARGET" && git rev-parse "$HEAD_REF")
 
 echo "판정 대상 $TARGET"
 echo "기준      common=$COMMON"
 echo "          infra=$INFRA"
-echo "범위      $BASE_SHA..$HEAD_SHA"
+N=$(cd "$TARGET" && git rev-list --count "$BASE_SHA..$HEAD_SHA")
+echo "범위      $BASE_SHA..$HEAD_SHA  (커밋 ${N}개)"
 echo
 
 # --- 1. 빌드 게이트 -----------------------------------------------------
@@ -97,7 +127,7 @@ PROMPT=$(cat <<EOF
 $TARGET/docs/verification/g-local.md 의 절차대로 G-LOCAL 판정을 수행하라.
 
 판정 대상   $TARGET
-범위        $BASE_SHA..$HEAD_SHA
+범위        $BASE_SHA..$HEAD_SHA  (커밋 ${N}개)
 기준        common=$COMMON
             infra=$INFRA
 계산 결과   $SCOPE
