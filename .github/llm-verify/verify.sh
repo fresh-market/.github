@@ -114,27 +114,8 @@ N=$(cd "$TARGET" && git rev-list --count "$BASE_SHA..$HEAD_SHA")
 echo "범위      $BASE_SHA..$HEAD_SHA  (커밋 ${N}개)"
 echo
 
-# --- 1. 빌드 게이트 -----------------------------------------------------
-# CI 에서는 이 둘이 병합을 차단한다. 여기서는 알리기만 한다.
-#   *.domain.service.* 메서드 커버리지 100%
-#   정적 분석 신규 Blocker 0건
-#
-# --no-daemon 을 쓰지 않는다. 반복 실행하는 도구인데 매번 JVM 을 새로 띄우면
-# 한 번에 20~30초가 든다. 데몬을 살려두면 두 번째부터 몇 초로 줄어든다.
-# CI 는 일회성 러너라 거기서는 --no-daemon 이 맞고, 그쪽은 pr-gate.yml 이 따로 준다.
-BUILD_RESULT="건너뜀 (gradlew 없음)"
-if [ -x "$TARGET/gradlew" ]; then
-    if (cd "$TARGET" && ./gradlew check -q); then
-        BUILD_RESULT="통과"
-    else
-        BUILD_RESULT="미달. CI 에서는 여기서 병합이 막힌다"
-    fi
-fi
-echo "== 빌드 게이트"
-echo "$BUILD_RESULT"
-echo
 
-# --- 2. 대상 항목 계산 --------------------------------------------------
+# --- 1. 대상 항목 계산 --------------------------------------------------
 # run.py --mode match 는 앵커 규칙만 돌린다. 네트워크도 API 키도 쓰지 않는다.
 # --mode judge 는 Gemini 를 부르므로 여기서 쓰지 않는다.
 # 활성 항목 목록을 파일로 받는다. 이것이 없으면 판정하는 쪽이 items.yml 세 개를
@@ -143,6 +124,38 @@ ITEMS=$(mktemp -d -t verify)/items.md
 SCOPE=$(python3 "$COMMON/.github/llm-verify/run.py" --mode match \
     --backend "$TARGET" --common "$COMMON" --infra "$INFRA" \
     --base "$BASE_SHA" --head "$HEAD_SHA" --items-out "$ITEMS")
+
+# 판정할 것이 없으면 여기서 끝낸다. 빌드 게이트도 돌리지 않는다.
+# 문서만 고친 커밋이 실행의 절반이 넘는데, 그 경우 어떤 항목도 위반될 수 없다.
+# --full 이면 건너뛰지 않는다. 다른 저장소 항목은 문서 변경에도 걸릴 수 있다.
+if [ "$FULL" = "0" ] && printf '%s' "$SCOPE" | grep -q '"skip": *"true"'; then
+    echo "판정할 항목 없음. 판정 대상 파일이 바뀌지 않았다."
+    echo "다른 저장소 항목까지 보려면 --full 을 준다."
+    exit 0
+fi
+
+# --- 2. 빌드 게이트 -----------------------------------------------------
+# CI 에서는 이 둘이 병합을 차단한다. 여기서는 알리기만 한다.
+#   *.domain.service.* 메서드 커버리지 100%
+#   정적 분석 신규 Blocker 0건
+#
+# --no-daemon 을 쓰지 않는다. 반복 실행하는 도구인데 매번 JVM 을 새로 띄우면
+# 한 번에 20~30초가 든다. 데몬을 살려두면 두 번째부터 몇 초로 줄어든다.
+# CI 는 일회성 러너라 거기서는 --no-daemon 이 맞고, 그쪽은 pr-gate.yml 이 따로 준다.
+BUILD_RESULT="건너뜀 (gradlew 없음)"
+if [ ! -x "$TARGET/gradlew" ]; then
+    :
+elif ! printf '%s' "$SCOPE" | grep -q '"code_changed": *"true"'; then
+    # 소스도 빌드 설정도 안 바뀌었으면 결과가 직전과 같다
+    BUILD_RESULT="건너뜀 (빌드 대상이 바뀌지 않았다)"
+elif (cd "$TARGET" && ./gradlew check -q); then
+    BUILD_RESULT="통과"
+else
+    BUILD_RESULT="미달. CI 에서는 여기서 병합이 막힌다"
+fi
+echo "== 빌드 게이트"
+echo "$BUILD_RESULT"
+echo
 
 # --- 3. 판정 범위 -------------------------------------------------------
 # 기본은 이 저장소 자신의 항목만 본다. 전부 보면 기준 문서 12개에 확정값까지 읽어야 해서

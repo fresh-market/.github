@@ -645,6 +645,12 @@ def main():
     rules, fallback = match_rules(anchors, files)
     needs_baseline = any(r.get("needs_baseline_values") for r in rules)
 
+    # 판정 대상이 하나도 안 바뀌었으면 판정하지 않는다.
+    # 어떤 규칙에도 안 걸린 데다 코드도 안 바뀐 것은 답이 정해진 질문이다.
+    code_globs = anchors["defaults"].get("code_globs") or []
+    code_changed = (not code_globs) or matches_any(files, code_globs)
+    skip = fallback and not code_changed
+
     if args.mode == "match":
         out = os.environ.get("GITHUB_OUTPUT")
         # 확정값 문서는 29만 자라 판정 입력에서 가장 크다. 규칙이 걸렸다는 이유만으로
@@ -674,6 +680,8 @@ def main():
         own = load_yaml(Path(args.backend) / ".github/llm-verify/items.yml").get("source")
         mine = [i for i, it in active.items() if it["repo"] == own]
         payload = {
+            "skip": "true" if skip else "false",
+            "code_changed": "true" if code_changed else "false",
             "needs_baseline": "true" if needs_baseline and baseline_ids else "false",
             "baseline_items": str(len(baseline_ids)),
             "active": str(len(active)),
@@ -692,6 +700,8 @@ def main():
         # 활성 항목 목록을 파일로 낸다.
         # 이것이 없으면 판정하는 쪽이 items.yml 세 개(합계 17만 자)를 읽어 직접 걸러야 한다.
         # 실제로 필요한 것은 활성 항목뿐이고 그것은 7천 자 안팎이다.
+        # skip 이어도 목록은 그대로 쓴다. 건너뛸지는 부르는 쪽이 정한다.
+        # verify.sh 는 --full 이면 건너뛰지 않고 다른 저장소 항목을 판정한다.
         if args.items_out:
             L = [f"# 활성 점검 항목 {len(active)}건",
                  f"# 대상 {own}  범위 {args.base[:7]}..{args.head[:7]}",
