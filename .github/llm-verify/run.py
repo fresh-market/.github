@@ -192,11 +192,21 @@ def read_files(root, patterns, limit_bytes=400_000):
 
     둘을 구분하지 않으면 "SecurityConfig 가 없다" 는 판정이 "증거 부족" 으로 뭉개진다.
     점검 항목의 대부분이 무언가의 부재를 묻기 때문에 이 구분이 게이트의 실효를 좌우한다.
+
+    git 이 추적하지 않는 파일은 읽지 않는다. QueryDSL 이 build/generated 에 만든 Q클래스가
+    앵커 글롭에 걸리는데, CI 는 새로 체크아웃해 build 가 없고 로컬은 빌드한 뒤라 있다.
+    그대로 두면 같은 커밋인데 판정 입력이 로컬과 CI 에서 달라진다.
     """
     root = Path(root)
+    try:
+        tracked = set(git(root, "ls-files").splitlines())
+    except RuntimeError:
+        tracked = None
     got, absent, failed, total = {}, [], [], 0
     for pattern in patterns:
         hits = [f for f in sorted(root.glob(pattern)) if f.is_file()]
+        if tracked is not None:
+            hits = [f for f in hits if str(f.relative_to(root)) in tracked]
         if not hits:
             absent.append(pattern)
             continue
@@ -701,8 +711,10 @@ def main():
     anchor_patterns = sorted({p for r in rules for p in (r.get("anchors") or [])})
     anchor_files, absent, failed = read_files(args.backend, anchor_patterns)
     docs, missing_docs = collect_docs(active, roots)
+    # 확정값은 2단계 프롬프트에만 들어간다. 2단계를 돌지 않으면 읽어 봐야 쓰이지 않는다.
+    # 문서 10개에 29만 자라 읽는 것만으로도 낭비다.
     baseline, baseline_failed = ({}, [])
-    if needs_baseline:
+    if needs_baseline and 2 in CI_STAGES:
         baseline, baseline_failed = collect_baseline(args.infra)
     conflicts, intentional = conflict_map(
         Path(args.common) / ".github/llm-verify/known-conflicts.yml")
@@ -729,7 +741,7 @@ def main():
         print(f"  저장소별  {dict(by_repo)}")
         print(f"앵커 파일   읽음 {len(anchor_files)}, 부재 {len(absent)}, 실패 {len(failed)}")
         print(f"기준 문서   {len(docs)}건" + (f", 못 읽음 {missing_docs}" if missing_docs else ""))
-        print(f"확정값      " + (f"{len(baseline)}건" if needs_baseline else "불필요")
+        print(f"확정값      " + (f"{len(baseline)}건" if baseline else "불필요")
               + (f", 못 읽음 {baseline_failed}" if baseline_failed else ""))
         print(f"모순 유보   {len([i for i in active if i in conflicts])}건")
         eff = [i for i in active if i in intentional and i not in conflicts]
