@@ -7,9 +7,10 @@
 # 작업 중 반복 실행하는 것만으로 CI 가 밀린다.
 #
 #   verify.sh                      전체. 아직 push 하지 않은 커밋 전부
-#   verify.sh HEAD                 최신 커밋 1개
-#   verify.sh HEAD~5               최신 커밋 5개
+#   verify.sh HEAD                 HEAD 커밋 하나
+#   verify.sh HEAD~1               그 앞 커밋 하나. git 이 읽는 그대로다
 #   verify.sh <SHA>                그 커밋 하나
+#   verify.sh -n 5                 최신 5개
 #   verify.sh <base> <head>        두 개를 주면 그 구간을 그대로 쓴다
 #   verify.sh --agent claude       지시문을 그 명령에 넘긴다
 #   verify.sh --agent "gemini -p"  임의의 CLI 에 넘긴다
@@ -22,33 +23,36 @@ set -u
 # --- 인자 ---------------------------------------------------------------
 TARGET=$PWD
 AGENT=""
+COUNT=""
 ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --target) TARGET=$2; shift 2 ;;
         --agent)  AGENT=$2;  shift 2 ;;
-        -h|--help) sed -n '3,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -n)       COUNT=$2;  shift 2 ;;
+        -h|--help) sed -n '3,19p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) ARGS+=("$1"); shift ;;
     esac
 done
-# 인자는 "무엇을 볼지" 를 뜻한다. git 의 base..head 와 다르게 읽는다.
-#   없음      전체. 아직 push 하지 않은 커밋 전부
-#   HEAD~N    최신 N개        -> HEAD~N..HEAD
-#   그 밖의 ref  그 커밋 하나    -> <ref>~1..<ref>
+# ref 는 언제나 git 이 읽는 그대로다. 개수는 -n 이 맡는다.
+#   없음        전체. 아직 push 하지 않은 커밋 전부
+#   <ref>       그 커밋 하나      -> <ref>~1..<ref>
+#   -n N        최신 N개          -> HEAD~N..HEAD
 #   둘을 주면 그 구간을 그대로 쓴다
 #
-# HEAD~N 만 "몇 개" 로 읽고 나머지 ref 는 "그 커밋" 으로 읽는 이유는,
-# SHA 를 준 사람은 그 커밋을 보려는 것이지 거기부터 지금까지를 보려는 것이 아니기 때문이다.
-# 시작점으로 읽으면 다른 브랜치의 SHA 를 줬을 때 merge-base 가 HEAD 로 잡혀 범위가 비고,
-# 파일이 0개라 on_no_match 로 떨어져 전부 NOT_APPLICABLE 이 된다. 통과처럼 보이지만 판정이 없다.
+# 전에는 HEAD~N 을 "최신 N개" 로 읽었는데, 그러면 HEAD~1 이 git 의 뜻과 어긋나
+# 한 개 앞 커밋이 아니라 HEAD 를 가리켰다. 개수를 따로 빼서 그 자리를 없앤다.
 HEAD_REF=${ARGS[1]:-HEAD}
-if [ ${#ARGS[@]} -eq 0 ]; then
+if [ -n "$COUNT" ]; then
+    if ! [ "$COUNT" -gt 0 ] 2>/dev/null; then
+        echo "-n 은 1 이상의 정수여야 한다: $COUNT" >&2
+        exit 2
+    fi
+    BASE=HEAD~$COUNT
+    HEAD_REF=HEAD
+elif [ ${#ARGS[@]} -eq 0 ]; then
     BASE=""
 elif [ ${#ARGS[@]} -ge 2 ]; then
-    BASE=${ARGS[0]}
-elif [ "${ARGS[0]}" = "HEAD" ]; then
-    BASE=HEAD~1
-elif [[ "${ARGS[0]}" == HEAD~* ]]; then
     BASE=${ARGS[0]}
 else
     BASE=${ARGS[0]}~1
@@ -92,7 +96,7 @@ if [ -z "$BASE" ]; then
         BASE='origin/HEAD'
     else
         echo "전체 범위를 정할 수 없다. upstream 도 origin/HEAD 도 없다." >&2
-        echo "HEAD 나 HEAD~N 으로 범위를 직접 준다." >&2
+        echo "-n N 이나 <ref> 로 범위를 직접 준다." >&2
         exit 2
     fi
 fi

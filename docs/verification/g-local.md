@@ -12,12 +12,14 @@ LLM API 를 부르는 것은 CI 의 G-PR 뿐이다. 여기서는 API 를 쓰지 
 
 ```bash
 ./verify.sh          # 아직 push 하지 않은 커밋 전부
-./verify.sh HEAD     # 최신 커밋 1개
-./verify.sh HEAD~5   # 최신 커밋 5개
+./verify.sh HEAD     # HEAD 커밋 하나
+./verify.sh HEAD~1   # 그 앞 커밋 하나
+./verify.sh <SHA>    # 그 커밋 하나
+./verify.sh -n 5     # 최신 5개
 ```
 
-인자는 **몇 개를 볼지**를 뜻한다. git 의 `base..head` 와 다르게 읽는다.
-`HEAD` 를 주면 빈 구간이 아니라 최신 커밋 하나다.
+**ref 는 언제나 git 이 읽는 그대로다.** 개수를 볼 때만 `-n` 을 쓴다.
+ref 하나를 주면 그 커밋 하나를 본다. `<ref>~1..<ref>` 로 푼다.
 
 두 개를 주면 `<base> <head>` 구간을 그대로 쓴다. 지난 구간을 다시 볼 때만 쓴다.
 
