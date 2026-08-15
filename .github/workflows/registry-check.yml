@@ -26,8 +26,9 @@ jobs:
           python-version: "3.12"
 
       # gen_items.py 는 표준 라이브러리만 쓴다. 설치할 것이 없다
-      - name: common 217건
+      # rationale 문서에도 같은 항목 목록이 남아 있으므로 guideline 만 읽는다
+      - name: common 219건
         run: |
           python3 .github/llm-verify/gen_items.py \
-            docs/software-quality 'qa-*.md' common \
+            docs/software-quality 'qa-*-guideline.md' common \
             -o .github/llm-verify/items.yml --check

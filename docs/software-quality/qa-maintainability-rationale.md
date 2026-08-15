@@ -1,4 +1,7 @@
-# 유지보수성 (Maintainability)
+# 유지보수성 점검 항목의 근거
+
+판정용 항목 목록은 [qa-maintainability-guideline.md](./qa-maintainability-guideline.md) 에 있다.
+이 문서는 왜 그 기준인지와 예시를 담는다.
 
 수정, 개선, 환경 변화 적응을 효과적이고 효율적으로 할 수 있는 정도를 뜻한다.
 
@@ -190,7 +193,7 @@ catch (ExternalException e) {
 ```
 
 운영 장애에서 가장 곤란한 상황은 무엇이 잘못됐는지 로그조차 없는 경우다.
-시스템 차원의 분석성은 [qa-observability.md](./qa-observability.md)에서 이어서 다룬다.
+시스템 차원의 분석성은 [qa-observability-rationale.md](./qa-observability-rationale.md)에서 이어서 다룬다.
 
 ## 5. 컨벤션은 사람이 아니라 도구가 본다
 
@@ -263,9 +266,9 @@ test {
 
 ## 7. 관련 문서
 
-* 시스템 차원의 분석성: [qa-observability.md](./qa-observability.md)
-* 변경 가능성과 교체 가능성: [qa-flexibility.md](./qa-flexibility.md)
-* 추상화와 단순성의 충돌: [qa-tradeoffs.md](./qa-tradeoffs.md)
+* 시스템 차원의 분석성: [qa-observability-rationale.md](./qa-observability-rationale.md)
+* 변경 가능성과 교체 가능성: [qa-flexibility-rationale.md](./qa-flexibility-rationale.md)
+* 추상화와 단순성의 충돌: [qa-tradeoffs-rationale.md](./qa-tradeoffs-rationale.md)
 
 ## 8. 참고 문헌
 

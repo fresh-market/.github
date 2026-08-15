@@ -1,4 +1,7 @@
-# 데이터 정합성 (Data Integrity)
+# 데이터 정합성 점검 항목의 근거
+
+판정용 항목 목록은 [qa-data-integrity-guideline.md](./qa-data-integrity-guideline.md) 에 있다.
+이 문서는 왜 그 기준인지와 예시를 담는다.
 
 데이터가 언제나 업무 규칙에 부합하는 상태로 유지되는 정도를 뜻한다.
 
@@ -348,9 +351,9 @@ WHERE remaining_qty < 0
 
 ## 9. 관련 문서
 
-* 멱등성과 재시도: [qa-reliability.md](./qa-reliability.md)
-* 정확성과 성능의 충돌: [qa-tradeoffs.md](./qa-tradeoffs.md)
-* 잠금이 성능에 주는 영향: [qa-performance-efficiency.md](./qa-performance-efficiency.md)
+* 멱등성과 재시도: [qa-reliability-rationale.md](./qa-reliability-rationale.md)
+* 정확성과 성능의 충돌: [qa-tradeoffs-rationale.md](./qa-tradeoffs-rationale.md)
+* 잠금이 성능에 주는 영향: [qa-performance-efficiency-rationale.md](./qa-performance-efficiency-rationale.md)
 
 ## 10. 참고 문헌
 

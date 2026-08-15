@@ -329,7 +329,7 @@ infra PR 하나에서
 ```
 
 기준을 낮추면서 코드도 같이 낮추면 게이트를 그대로 지나간다.
-qa-tradeoffs.md 6장이 요구하는 기준 조정 절차(사유와 근거 데이터 기록)도 함께 우회된다.
+qa-tradeoffs-rationale.md 6장이 요구하는 기준 조정 절차(사유와 근거 데이터 기록)도 함께 우회된다.
 
 이를 막기 위해 판정에 쓰는 기준을 시점으로 고정한다.
 
@@ -358,7 +358,7 @@ PR 안에서 기준을 바꿔도 그 PR 판정에는 반영되지 않고, 병합
 
 ### 2.3 규칙 2: 기준 변경은 판정과 분리해 표시한다
 
-기준 변경 자체는 막지 않는다. 정상적인 활동이고 qa-tradeoffs.md가 절차까지 정해 두었다.
+기준 변경 자체는 막지 않는다. 정상적인 활동이고 qa-tradeoffs-rationale.md가 절차까지 정해 두었다.
 다만 판정 결과에 섞이면 사람이 알아채지 못하므로 별도로 드러낸다.
 
 diff에 다음 경로가 포함되면 판정 결과와 무관하게 리뷰 코멘트에 명시한다.
@@ -488,7 +488,7 @@ diff만 주면 "타임아웃이 없다"를 알 수 없으므로, 판정에 필�
 
 앵커 파일이 없으면 그 항목은 판정하지 않고 `INSUFFICIENT_EVIDENCE`로 표기한다.
 추측으로 지적하면 오탐이 되고, 오탐이 쌓이면 팀이 전체를 무시하기 시작한다.
-[qa-maintainability.md](./qa-maintainability.md)의 "거짓 경보가 반복되면 진짜 실패도 함께 묻힌다"가 그대로 적용된다.
+[qa-maintainability-rationale.md](./qa-maintainability-rationale.md)의 "거짓 경보가 반복되면 진짜 실패도 함께 묻힌다"가 그대로 적용된다.
 
 ## 4. 항목 ID와 출력 형식
 
@@ -540,7 +540,7 @@ version: 1
 source: common
 count: 217
 items:
-  - {id: DI-2-02, doc: qa-data-integrity.md, ch: 2, level: 설계, gate: G-DESIGN,
+  - {id: DI-2-02, doc: qa-data-integrity-rationale.md, ch: 2, level: 설계, gate: G-DESIGN,
      domains: [database], title: "충돌 빈도에 맞는 잠금 방식을 골랐는가"}
 ```
 
@@ -643,13 +643,13 @@ LLM은 활성화된 ID 목록을 순회하며 항목마다 다음 구조로만 �
 | LLM 작성자 | ADR 초안, 런북 초안, 사후 분석 초안, 정합성 검사 쿼리 초안 | 판정하지 않는다. 사람의 입력 비용만 낮춘다 |
 | 사람 | 등급 C 수치의 확정, 트레이드오프 선택, 완화 판단 | 위임 불가 |
 
-[qa-maintainability.md](./qa-maintainability.md)는 "포맷터와 정적 분석 도구가 기계적으로 처리하면 사람은 도구가 못 잡는 설계와 로직에 집중할 수 있다"고 적었다.
+[qa-maintainability-rationale.md](./qa-maintainability-rationale.md)는 "포맷터와 정적 분석 도구가 기계적으로 처리하면 사람은 도구가 못 잡는 설계와 로직에 집중할 수 있다"고 적었다.
 LLM은 그 도구와 사람 사이의 빈칸만 맡는다.
 ArchUnit이 이미 잡는 순환 참조를 LLM이 또 지적하면 같은 내용이 두 번 올라와 소음만 늘어난다.
 
 ## 6. 오탐 관리
 
-[qa-observability.md](./qa-observability.md)의 알림 정기 점검 절차를 그대로 옮긴다.
+[qa-observability-rationale.md](./qa-observability-rationale.md)의 알림 정기 점검 절차를 그대로 옮긴다.
 LLM 리뷰도 알림과 같은 성질을 갖는다. 늘어나기만 하고 줄지 않으며, 정확도가 떨어지면 전체가 무시된다.
 
 점검 항목
@@ -681,7 +681,7 @@ LLM 리뷰도 알림과 같은 성질을 갖는다. 늘어나기만 하고 줄�
 | `INSUFFICIENT_EVIDENCE` 비율 | 20% 이하 | 초과는 앵커 규칙 결함 |
 
 판정하지 못하는 항목을 목록에 남겨 두면 나머지 항목의 신뢰도까지 떨어진다.
-[qa-tradeoffs.md](./qa-tradeoffs.md)의 "지켜지지 않는 기준은 삭제한다"가 여기에도 적용된다.
+[qa-tradeoffs-rationale.md](./qa-tradeoffs-rationale.md)의 "지켜지지 않는 기준은 삭제한다"가 여기에도 적용된다.
 
 ## 7. 커버리지 계산
 
@@ -1167,10 +1167,10 @@ backend `CODEREVIEW.md`의 봇 규칙 4번과 정면으로 충돌하기 때문�
 ## 11. 관련 문서
 
 * 전체 개요와 층위 표기: [quality-attributes.md](./quality-attributes.md)
-* 기준 조정과 결정 기록 양식: [qa-tradeoffs.md](./qa-tradeoffs.md)
-* 도구 기반 검사와 구조 규칙 테스트: [qa-maintainability.md](./qa-maintainability.md)
-* 알림 정기 점검 절차의 원형: [qa-observability.md](./qa-observability.md)
-* 판정 불가 영역이 몰려 있는 문서: [qa-incident-response.md](./qa-incident-response.md)
+* 기준 조정과 결정 기록 양식: [qa-tradeoffs-rationale.md](./qa-tradeoffs-rationale.md)
+* 도구 기반 검사와 구조 규칙 테스트: [qa-maintainability-rationale.md](./qa-maintainability-rationale.md)
+* 알림 정기 점검 절차의 원형: [qa-observability-rationale.md](./qa-observability-rationale.md)
+* 판정 불가 영역이 몰려 있는 문서: [qa-incident-response-rationale.md](./qa-incident-response-rationale.md)
 
 ## 12. 참고 문헌
 

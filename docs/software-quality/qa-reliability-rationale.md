@@ -1,4 +1,7 @@
-# 신뢰성 (Reliability)
+# 신뢰성 점검 항목의 근거
+
+판정용 항목 목록은 [qa-reliability-guideline.md](./qa-reliability-guideline.md) 에 있다.
+이 문서는 왜 그 기준인지와 예시를 담는다.
 
 명시된 조건에서 명시된 기간 동안 의도한 기능을 수행하는 정도를 뜻한다.
 
@@ -294,7 +297,7 @@ public List<Item> enrich(Long userId) {
 ## 4. 복구성
 
 이 절은 복구 가능한 **성질**을 설계하는 것을 다룬다.
-실제로 서버가 죽었을 때 사람이 수행하는 절차(페일오버, 롤백 실행, 재기동 후 복구, 사후 분석)는 [qa-incident-response.md](./qa-incident-response.md)에 있다.
+실제로 서버가 죽었을 때 사람이 수행하는 절차(페일오버, 롤백 실행, 재기동 후 복구, 사후 분석)는 [qa-incident-response-rationale.md](./qa-incident-response-rationale.md)에 있다.
 
 점검 항목
 * `[설계]` `REL-4-01` 트랜잭션 경계가 복구 단위와 일치하는가
@@ -418,10 +421,10 @@ SLO가 99.9%면 월 43.8분의 실패가 허용된 예산이다. 예산이 남�
 
 ## 7. 관련 문서
 
-* 장애 감지와 진단: [qa-observability.md](./qa-observability.md)
-* 실제 장애 발생 시 대응 절차: [qa-incident-response.md](./qa-incident-response.md)
-* 데이터 복구와 정합성: [qa-data-integrity.md](./qa-data-integrity.md)
-* 가용성과 정합성의 충돌: [qa-tradeoffs.md](./qa-tradeoffs.md)
+* 장애 감지와 진단: [qa-observability-rationale.md](./qa-observability-rationale.md)
+* 실제 장애 발생 시 대응 절차: [qa-incident-response-rationale.md](./qa-incident-response-rationale.md)
+* 데이터 복구와 정합성: [qa-data-integrity-rationale.md](./qa-data-integrity-rationale.md)
+* 가용성과 정합성의 충돌: [qa-tradeoffs-rationale.md](./qa-tradeoffs-rationale.md)
 
 ## 8. 참고 문헌
 

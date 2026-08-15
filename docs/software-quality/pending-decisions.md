@@ -25,11 +25,11 @@
 
 | 여기의 예시값 | 위치 | 확정값 |
 |---------------|------|--------|
-| 가용성 목표 99.5~99.95% | `qa-reliability.md` 39행 | 장애 시나리오 9종별 RTO와 RPO, 보장 메커니즘까지 |
-| 타임아웃 예산 (게이트웨이 10s, 서비스 간 1s/5s) | `qa-reliability.md` 68행 | 종료 4계층(30/30/45/60초), 요청 4계층(3/5/10/60초) |
-| RPO와 RTO 등급표 | `qa-reliability.md` 325행 | 시나리오별 실제 값 |
-| graceful shutdown 30초, readiness 연속 3회 | `qa-reliability.md` 381행 | 확정. 경로와 임계값까지 |
-| 추적 샘플링 (오류 100%, 핵심 10%) | `qa-observability.md` 198행 | 평상시 10%, 부하 시험 5%, 장애 주입 100%, 오류 100% |
+| 가용성 목표 99.5~99.95% | `qa-reliability-rationale.md` 39행 | 장애 시나리오 9종별 RTO와 RPO, 보장 메커니즘까지 |
+| 타임아웃 예산 (게이트웨이 10s, 서비스 간 1s/5s) | `qa-reliability-rationale.md` 68행 | 종료 4계층(30/30/45/60초), 요청 4계층(3/5/10/60초) |
+| RPO와 RTO 등급표 | `qa-reliability-rationale.md` 325행 | 시나리오별 실제 값 |
+| graceful shutdown 30초, readiness 연속 3회 | `qa-reliability-rationale.md` 381행 | 확정. 경로와 임계값까지 |
+| 추적 샘플링 (오류 100%, 핵심 10%) | `qa-observability-rationale.md` 198행 | 평상시 10%, 부하 시험 5%, 장애 주입 100%, 오류 100% |
 | 커넥션풀 산식 | 여러 곳 | `maximum-pool-size: 10`, `minimum-idle: 10` |
 
 **확정값이 더 엄격한 경우도 있다.** 복원 리허설은 여기가 "분기 1회 이상"인데 확정값은 **주 1회**이고,
@@ -45,21 +45,21 @@
 
 | 값 | 위치 | 현재 예시값 | 무엇을 재야 하는가 |
 |------|------|-------------|--------------------|
-| 기능별 지연시간 목표 | `qa-performance-efficiency.md` 33행 | 단순 조회 p99 100ms, 목록 300ms, 쓰기 500ms | 부하 시험에서 실제 분포 |
-| 요청당 쿼리 수 | `qa-performance-efficiency.md` 99행 | 10개 이하, 20개 초과 시 N+1 의심 | 실제 화면별 쿼리 수 |
-| 배치 청크 크기 | `qa-performance-efficiency.md` 232행 | 1000행, 메모리 상한 10000행 | 힙 크기와 행 크기 |
-| 캐시 도입 조건 | `qa-performance-efficiency.md` 251행 | 반복률 70% 이상, 적중률 90% | 실제 조회 패턴 |
-| 낙관적 잠금 선택 기준 | `qa-data-integrity.md` 40행 | 충돌률 1% 미만 | **실제 충돌률.** 문서가 스스로 "측정한 뒤 확정한다"고 적었다 |
-| 트랜잭션 지속 시간 | `qa-data-integrity.md` 175행 | 100ms 이하, 상한 1초 | 실제 트랜잭션 분포 |
-| 아웃박스 지연과 적체 | `qa-data-integrity.md` 248행 | 5초 이내, 100건 초과 시 경보 | 발행 처리량 |
-| 락 유지 시간 | `qa-flexibility.md` 119행 | 예상 작업 시간의 3배, 최대 30분 | 배치 최대 실행 시간 |
-| 요청 대기 큐 | `qa-reliability.md` 259행 | 스레드풀의 2배, 대기 1초 | 톰캣 스레드 수 실측 |
-| 로그량 | `qa-observability.md` 46행 | 요청당 INFO 3줄, 단일 로그 2KB | 실제 로그 볼륨과 비용 |
-| 메트릭 카디널리티 | `qa-observability.md` 139행 | 시계열 1000개, 태그 값 50개 | 실제 태그 조합 |
-| 레이트 리밋 | `qa-security.md` 304행 | 계정당 5회/15분, IP당 30회/15분 | **실제 사용 패턴.** 문서가 "관측한 뒤 확정한다"고 적었다 |
-| 단위 테스트 실행 시간 | `qa-maintainability.md` 103행 | 전체 1분, 단일 100ms | 테스트가 쌓인 뒤 |
+| 기능별 지연시간 목표 | `qa-performance-efficiency-rationale.md` 33행 | 단순 조회 p99 100ms, 목록 300ms, 쓰기 500ms | 부하 시험에서 실제 분포 |
+| 요청당 쿼리 수 | `qa-performance-efficiency-rationale.md` 99행 | 10개 이하, 20개 초과 시 N+1 의심 | 실제 화면별 쿼리 수 |
+| 배치 청크 크기 | `qa-performance-efficiency-rationale.md` 232행 | 1000행, 메모리 상한 10000행 | 힙 크기와 행 크기 |
+| 캐시 도입 조건 | `qa-performance-efficiency-rationale.md` 251행 | 반복률 70% 이상, 적중률 90% | 실제 조회 패턴 |
+| 낙관적 잠금 선택 기준 | `qa-data-integrity-rationale.md` 40행 | 충돌률 1% 미만 | **실제 충돌률.** 문서가 스스로 "측정한 뒤 확정한다"고 적었다 |
+| 트랜잭션 지속 시간 | `qa-data-integrity-rationale.md` 175행 | 100ms 이하, 상한 1초 | 실제 트랜잭션 분포 |
+| 아웃박스 지연과 적체 | `qa-data-integrity-rationale.md` 248행 | 5초 이내, 100건 초과 시 경보 | 발행 처리량 |
+| 락 유지 시간 | `qa-flexibility-rationale.md` 119행 | 예상 작업 시간의 3배, 최대 30분 | 배치 최대 실행 시간 |
+| 요청 대기 큐 | `qa-reliability-rationale.md` 259행 | 스레드풀의 2배, 대기 1초 | 톰캣 스레드 수 실측 |
+| 로그량 | `qa-observability-rationale.md` 46행 | 요청당 INFO 3줄, 단일 로그 2KB | 실제 로그 볼륨과 비용 |
+| 메트릭 카디널리티 | `qa-observability-rationale.md` 139행 | 시계열 1000개, 태그 값 50개 | 실제 태그 조합 |
+| 레이트 리밋 | `qa-security-rationale.md` 304행 | 계정당 5회/15분, IP당 30회/15분 | **실제 사용 패턴.** 문서가 "관측한 뒤 확정한다"고 적었다 |
+| 단위 테스트 실행 시간 | `qa-maintainability-rationale.md` 103행 | 전체 1분, 단일 100ms | 테스트가 쌓인 뒤 |
 
-**`qa-data-integrity.md` 40행과 `qa-security.md` 304행은 문서가 스스로 미확정이라고 밝혔다.** 나머지보다 우선한다.
+**`qa-data-integrity-rationale.md` 40행과 `qa-security-rationale.md` 304행은 문서가 스스로 미확정이라고 밝혔다.** 나머지보다 우선한다.
 
 ---
 
@@ -69,21 +69,21 @@
 
 | 값 | 위치 | 현재 예시값 | 무엇을 보고 정하는가 |
 |------|------|-------------|----------------------|
-| 폐기 예고 기간 | `qa-compatibility.md` 48~52행 | 30일, 180일 | **클라이언트 업데이트 주기.** 문서가 "확인한 뒤 팀이 정해야 한다"고 적었다 |
-| 페이지 크기 | `qa-compatibility.md` 118행 | 기본 20, 최대 100 | 화면 설계 |
-| 온라인 DDL 필수 대상 | `qa-compatibility.md` 188행 | 행 수 100만 이상 | 실제 테이블 크기 |
-| 배치 전용 커넥션 비율 | `qa-compatibility.md` 207행 | 최대 커넥션의 20% 이하 | 커넥션 풀 확정값과 함께 |
-| 필드 명명 규칙 | `qa-compatibility.md` 250행 | snake_case 또는 camelCase 중 하나 | **택일이다.** 혼용만 아니면 된다 |
-| 금액 표현과 반올림 | `qa-functional-suitability.md` 149행 | `DECIMAL(19,4)`, `HALF_UP` | 도메인 정책 |
-| 외부 호출 실패 분기 | `qa-functional-suitability.md` 59행 | 최소 3가지 | 연동 대상 수 |
-| 심각도 등급 정의 | `qa-incident-response.md` 24행 | SEV1~SEV4 | **서비스 규모.** 문서가 "재정의한다"고 적었다 |
-| 안정화 관찰 시간 | `qa-incident-response.md` 85행 | 최소 30분 | 운영 경험 |
-| 훈련 주기 | `qa-incident-response.md` 379행 | 유형별 | 팀 여력 |
-| 중복 코드 비율 | `qa-maintainability.md` 150행 | 5% 이하, 정책 변경 파일 3개 이하 | SonarQube 기본값 사용 여부 |
-| 요청 본문과 업로드 상한 | `qa-security.md` 152행 | 1MB, 10MB | 업로드 기능 유무 |
-| 해시 파라미터 재검토 주기 | `qa-security.md` 221행 | 미정 | 팀 규율 |
+| 폐기 예고 기간 | `qa-compatibility-rationale.md` 48~52행 | 30일, 180일 | **클라이언트 업데이트 주기.** 문서가 "확인한 뒤 팀이 정해야 한다"고 적었다 |
+| 페이지 크기 | `qa-compatibility-rationale.md` 118행 | 기본 20, 최대 100 | 화면 설계 |
+| 온라인 DDL 필수 대상 | `qa-compatibility-rationale.md` 188행 | 행 수 100만 이상 | 실제 테이블 크기 |
+| 배치 전용 커넥션 비율 | `qa-compatibility-rationale.md` 207행 | 최대 커넥션의 20% 이하 | 커넥션 풀 확정값과 함께 |
+| 필드 명명 규칙 | `qa-compatibility-rationale.md` 250행 | snake_case 또는 camelCase 중 하나 | **택일이다.** 혼용만 아니면 된다 |
+| 금액 표현과 반올림 | `qa-functional-suitability-rationale.md` 149행 | `DECIMAL(19,4)`, `HALF_UP` | 도메인 정책 |
+| 외부 호출 실패 분기 | `qa-functional-suitability-rationale.md` 59행 | 최소 3가지 | 연동 대상 수 |
+| 심각도 등급 정의 | `qa-incident-response-rationale.md` 24행 | SEV1~SEV4 | **서비스 규모.** 문서가 "재정의한다"고 적었다 |
+| 안정화 관찰 시간 | `qa-incident-response-rationale.md` 85행 | 최소 30분 | 운영 경험 |
+| 훈련 주기 | `qa-incident-response-rationale.md` 379행 | 유형별 | 팀 여력 |
+| 중복 코드 비율 | `qa-maintainability-rationale.md` 150행 | 5% 이하, 정책 변경 파일 3개 이하 | SonarQube 기본값 사용 여부 |
+| 요청 본문과 업로드 상한 | `qa-security-rationale.md` 152행 | 1MB, 10MB | 업로드 기능 유무 |
+| 해시 파라미터 재검토 주기 | `qa-security-rationale.md` 221행 | 미정 | 팀 규율 |
 
-**`qa-compatibility.md` 250행은 택일이라 가장 쉽다.** snake_case 든 camelCase 든 하나로 통일만 하면 되고,
+**`qa-compatibility-rationale.md` 250행은 택일이라 가장 쉽다.** snake_case 든 camelCase 든 하나로 통일만 하면 되고,
 정하지 않으면 `CMP-7-01`(명명 일관성)을 판정할 기준이 없다.
 
 ---
@@ -94,11 +94,11 @@
 
 | 위치 | 내용 |
 |------|------|
-| `qa-flexibility.md` 73행 | 무상태 확인 방법 (인스턴스를 죽여 보기) |
-| `qa-flexibility.md` 186행 | 추상화가 필요한 상황 |
-| `qa-data-integrity.md` 153행 | 규칙 유형별 DB 제약 매핑 |
-| `qa-maintainability.md` 72행 | 순환 참조 0건 |
-| `qa-incident-response.md` 240, 288행 | 확인 순서, 런북 구성 |
+| `qa-flexibility-rationale.md` 73행 | 무상태 확인 방법 (인스턴스를 죽여 보기) |
+| `qa-flexibility-rationale.md` 186행 | 추상화가 필요한 상황 |
+| `qa-data-integrity-rationale.md` 153행 | 규칙 유형별 DB 제약 매핑 |
+| `qa-maintainability-rationale.md` 72행 | 순환 참조 0건 |
+| `qa-incident-response-rationale.md` 240, 288행 | 확인 순서, 런북 구성 |
 
 `0건`처럼 자명한 것도 등급 C로 표기되어 있는데, 이것은 근거가 없어서가 아니라 표기를 일괄 적용한 결과다.
 
@@ -108,10 +108,10 @@
 
 | 순위 | 무엇 | 드는 시간 |
 |------|------|-----------|
-| 1 | 필드 명명 규칙 택일 (`qa-compatibility.md` 250행) | 결정 하나 |
-| 2 | 심각도 등급 정의 (`qa-incident-response.md` 24행) | 회의 30분 |
-| 3 | 폐기 예고 기간 (`qa-compatibility.md` 48행) | 클라이언트 정책 확인 후 |
-| 4 | 금액 표현과 반올림 (`qa-functional-suitability.md` 149행) | 도메인 확정 후 |
+| 1 | 필드 명명 규칙 택일 (`qa-compatibility-rationale.md` 250행) | 결정 하나 |
+| 2 | 심각도 등급 정의 (`qa-incident-response-rationale.md` 24행) | 회의 30분 |
+| 3 | 폐기 예고 기간 (`qa-compatibility-rationale.md` 48행) | 클라이언트 정책 확인 후 |
+| 4 | 금액 표현과 반올림 (`qa-functional-suitability-rationale.md` 149행) | 도메인 확정 후 |
 | 5 | 나머지 3장 항목 | 필요할 때 |
 | 6 | 2장 전체 | 부하 시험 이후 |
 

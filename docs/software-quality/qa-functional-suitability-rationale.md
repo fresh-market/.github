@@ -1,4 +1,7 @@
-# 기능 적합성 (Functional Suitability)
+# 기능 적합성 점검 항목의 근거
+
+판정용 항목 목록은 [qa-functional-suitability-guideline.md](./qa-functional-suitability-guideline.md) 에 있다.
+이 문서는 왜 그 기준인지와 예시를 담는다.
 
 명시된 요구와 암묵적 요구를 실제로 충족하는 정도를 뜻한다.
 
@@ -54,7 +57,7 @@ public Request submit(SubmitRequest req) {
 
 외부 호출이 타임아웃된 경우는 실패가 아니라 **결과를 모르는 상태**다.
 성공으로도 실패로도 확정할 수 없으므로 별도 상태(`UNKNOWN`, `PENDING_CONFIRM`)로 두고 조회로 확정한다.
-이 구분은 [qa-reliability.md](./qa-reliability.md)의 멱등성 항목과 함께 본다.
+이 구분은 [qa-reliability-rationale.md](./qa-reliability-rationale.md)의 멱등성 항목과 함께 본다.
 
 판정 기준 (등급 C. 근거 없음)
 
@@ -234,6 +237,6 @@ void 잔여_수량이_부족하면_요청에_실패한다() {
 
 ## 8. 관련 문서
 
-* 예외 경로와 실패 처리: [qa-reliability.md](./qa-reliability.md)
-* 동시 수정 시의 정확성: [qa-data-integrity.md](./qa-data-integrity.md)
-* 테스트 설계와 시험성: [qa-maintainability.md](./qa-maintainability.md)
+* 예외 경로와 실패 처리: [qa-reliability-rationale.md](./qa-reliability-rationale.md)
+* 동시 수정 시의 정확성: [qa-data-integrity-rationale.md](./qa-data-integrity-rationale.md)
+* 테스트 설계와 시험성: [qa-maintainability-rationale.md](./qa-maintainability-rationale.md)

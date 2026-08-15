@@ -96,7 +96,7 @@ conflicts:
     since: 2026-08-05
     affects: [REL-5-01]
     sources:
-      - doc: qa-reliability.md
+      - doc: qa-reliability-guideline.md
         section: "5장"
         value: "의존성 상태는 readiness 에서 본다 (일반론)"
       - doc: 백엔드공통_앱과DB_장애대응구조.md

@@ -153,7 +153,7 @@ backend 항목만 활성이면 대조할 값이 없으므로 읽지 않는다.
 기준 줄이 없는 항목만 원문을 펼친다. 각 항목의 `doc` 필드가 파일명이다.
 
 ```
-$COMMON/docs/software-quality/qa-*.md
+$COMMON/docs/software-quality/qa-*-guideline.md
 docs/code-architecture/*-guideline.md
 $INFRA/docs/infra-review/code-guideline.md
 ```
@@ -197,7 +197,7 @@ verdict          VIOLATION,  OK,  NOT_APPLICABLE,  INSUFFICIENT_EVIDENCE,  CONFL
 
 ```
 SEC-1-01  리소스 접근 시 소유권 또는 권한을 검증하는가
-  기준: common `qa-security.md` 1장
+  기준: common `qa-security-guideline.md` 1장
   OrderService.java:4
   id 로 조회만 하고 호출자가 소유자인지 확인하지 않는다
   인증 주체의 식별자를 조회 조건에 포함한다

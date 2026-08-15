@@ -1,9 +1,12 @@
-# 관측 가능성 (Observability)
+# 관측 가능성 점검 항목의 근거
+
+판정용 항목 목록은 [qa-observability-guideline.md](./qa-observability-guideline.md) 에 있다.
+이 문서는 왜 그 기준인지와 예시를 담는다.
 
 시스템의 외부 출력만으로 내부 상태를 파악할 수 있는 정도를 뜻한다.
 
 ISO/IEC 25010:2023에 독립 특성으로 존재하지 않으며, 유지보수성의 분석성(analysability)을 시스템 운영 차원으로 확장한 개념이다.
-코드 수준의 분석성은 [qa-maintainability.md](./qa-maintainability.md)에서 다루고, 이 문서는 운영 중인 시스템을 대상으로 한다.
+코드 수준의 분석성은 [qa-maintainability-rationale.md](./qa-maintainability-rationale.md)에서 다루고, 이 문서는 운영 중인 시스템을 대상으로 한다.
 
 예외 로그를 스택과 함께 남기는 수준에서 멈추기 쉬운 영역이다.
 메트릭과 분산 추적, SLO까지 포함해야 운영 중 진단이 가능해진다.
@@ -279,7 +282,7 @@ groups:
 
 `runbook` 링크가 없는 알림은 만들지 않는다.
 받은 사람이 무엇을 해야 할지 모르는 알림은 소음이다.
-런북 한 건의 구성과 갱신 방법은 [qa-incident-response.md](./qa-incident-response.md) 8장을 참고한다.
+런북 한 건의 구성과 갱신 방법은 [qa-incident-response-rationale.md](./qa-incident-response-rationale.md) 8장을 참고한다.
 
 ### 알림 정기 점검 절차
 
@@ -330,11 +333,11 @@ throw new RequestProcessingException(
 
 ## 9. 관련 문서
 
-* 코드 수준 분석성: [qa-maintainability.md](./qa-maintainability.md)
-* 가용성 목표와 에러 예산: [qa-reliability.md](./qa-reliability.md)
-* 목표 수치 설정: [qa-tradeoffs.md](./qa-tradeoffs.md)
-* 로그의 민감 정보: [qa-security.md](./qa-security.md)
-* 경보 이후의 대응 절차: [qa-incident-response.md](./qa-incident-response.md)
+* 코드 수준 분석성: [qa-maintainability-rationale.md](./qa-maintainability-rationale.md)
+* 가용성 목표와 에러 예산: [qa-reliability-rationale.md](./qa-reliability-rationale.md)
+* 목표 수치 설정: [qa-tradeoffs-rationale.md](./qa-tradeoffs-rationale.md)
+* 로그의 민감 정보: [qa-security-rationale.md](./qa-security-rationale.md)
+* 경보 이후의 대응 절차: [qa-incident-response-rationale.md](./qa-incident-response-rationale.md)
 
 ## 10. 참고 문헌
 

@@ -1,4 +1,7 @@
-# 유연성과 확장성 (Flexibility)
+# 유연성과 확장성 점검 항목의 근거
+
+판정용 항목 목록은 [qa-flexibility-guideline.md](./qa-flexibility-guideline.md) 에 있다.
+이 문서는 왜 그 기준인지와 예시를 담는다.
 
 요구, 환경, 사용 맥락의 변화에 적응할 수 있는 정도를 뜻한다.
 ISO/IEC 25010:2023에서 기존 이식성(portability)을 대체한 특성이다.
@@ -211,7 +214,7 @@ external:
 배포와 스키마 변경이 동시에 일어나면 롤백이 불가능해진다.
 컬럼 제거는 단계로 나눈다 (expand and contract).
 
-> 이 절은 `qa-compatibility.md` 5장과 세 항목이 겹친다.
+> 이 절은 `qa-compatibility-rationale.md` 5장과 세 항목이 겹친다.
 > 스키마는 계약이므로 호환성 문서가 같은 것을 다루기 때문이다.
 > 지금은 `defers_to` 로 발화만 하나로 줄여 두었고, 두 장을 합치는 것은 남은 일이다.
 
@@ -257,6 +260,6 @@ ALTER TABLE record ADD COLUMN memo VARCHAR(200),
 
 ## 7. 관련 문서
 
-* 성능 개선 순서: [qa-performance-efficiency.md](./qa-performance-efficiency.md)
-* 확장과 정합성의 충돌: [qa-tradeoffs.md](./qa-tradeoffs.md)
-* 다중 인스턴스에서의 정합성: [qa-data-integrity.md](./qa-data-integrity.md)
+* 성능 개선 순서: [qa-performance-efficiency-rationale.md](./qa-performance-efficiency-rationale.md)
+* 확장과 정합성의 충돌: [qa-tradeoffs-rationale.md](./qa-tradeoffs-rationale.md)
+* 다중 인스턴스에서의 정합성: [qa-data-integrity-rationale.md](./qa-data-integrity-rationale.md)

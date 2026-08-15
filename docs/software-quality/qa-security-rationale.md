@@ -1,4 +1,7 @@
-# 보안 (Security)
+# 보안 점검 항목의 근거
+
+판정용 항목 목록은 [qa-security-guideline.md](./qa-security-guideline.md) 에 있다.
+이 문서는 왜 그 기준인지와 예시를 담는다.
 
 권한 수준에 맞게만 정보와 기능에 접근하도록 보호하는 정도를 뜻한다.
 
@@ -343,9 +346,9 @@ void 공개_엔드포인트_외에는_인증을_요구한다() {
 
 ## 8. 관련 문서
 
-* 감사 로그와 추적: [qa-observability.md](./qa-observability.md)
-* 무결성과 동시 수정: [qa-data-integrity.md](./qa-data-integrity.md)
-* 보안 비용과 성능의 충돌: [qa-tradeoffs.md](./qa-tradeoffs.md)
+* 감사 로그와 추적: [qa-observability-rationale.md](./qa-observability-rationale.md)
+* 무결성과 동시 수정: [qa-data-integrity-rationale.md](./qa-data-integrity-rationale.md)
+* 보안 비용과 성능의 충돌: [qa-tradeoffs-rationale.md](./qa-tradeoffs-rationale.md)
 
 ## 9. 참고 문헌
 

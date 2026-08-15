@@ -8,7 +8,7 @@ items.yml 을 직접 고치면 다음 생성 때 조용히 덮어써진다.
     python3 gen_items.py <문서 디렉터리> <글롭> <source> [기본 층위] [-o 출력파일]
 
     # common. 층위 태그가 문서에 있다
-    python3 gen_items.py ../../docs/software-quality 'qa-*.md' common \\
+    python3 gen_items.py ../../docs/software-quality 'qa-*-guideline.md' common \\
             -o items.yml
 
     # backend, infra. 태그가 없어 기본값을 준다
@@ -59,6 +59,8 @@ LEVEL_BY_DOC = {
 
 # 검증 설계 문서는 게이트 자체를 점검하는 항목(LLM-*)을 담고 있으나 판정 대상이 아니다.
 # 글롭에 걸리므로 명시적으로 뺀다
+# 판정 대상이 아닌 문서. 지금은 글롭이 -guideline.md 만 잡아 걸릴 일이 없으나
+# 글롭이 넓어져도 들어오지 않도록 남겨 둔다
 EXCLUDE = {"qa-llm-verification.md"}
 
 # CI 를 두 단계로 나눈다. 1단계는 항상 돌고 2단계는 1단계가 온전할 때만 돈다.

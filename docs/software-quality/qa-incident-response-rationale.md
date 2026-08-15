@@ -1,8 +1,11 @@
-# 인시던트 대응과 복구 절차
+# 장애 대응 점검 항목의 근거
+
+판정용 항목 목록은 [qa-incident-response-guideline.md](./qa-incident-response-guideline.md) 에 있다.
+이 문서는 왜 그 기준인지와 예시를 담는다.
 
 서버나 의존 시스템이 실제로 죽었을 때 **사람이 무엇을 하는가**를 다룬다.
 
-신뢰성 문서([qa-reliability.md](./qa-reliability.md))가 "시스템이 복구 가능한 성질을 갖추었는가"를 설계 관점에서 다룬다면, 이 문서는 "지금 죽었다, 다음 단계는 무엇인가"를 실행 순서로 다룬다.
+신뢰성 문서([qa-reliability-rationale.md](./qa-reliability-rationale.md))가 "시스템이 복구 가능한 성질을 갖추었는가"를 설계 관점에서 다룬다면, 이 문서는 "지금 죽었다, 다음 단계는 무엇인가"를 실행 순서로 다룬다.
 RPO와 RTO를 정하는 것은 신뢰성 문서, 그 RTO 안에 실제로 복구해 내는 것은 이 문서의 몫이다.
 
 ## 0. 이 문서를 쓰는 방식
@@ -408,11 +411,11 @@ Google SRE의 정의에 따르면 사후 분석 기록은 사건, 영향, 완화
 
 ## 12. 관련 문서
 
-* 복구 가능한 성질의 설계(RPO, RTO, 백업, 헬스체크): [qa-reliability.md](./qa-reliability.md)
-* 탐지와 경보, 소진율 기준: [qa-observability.md](./qa-observability.md)
-* 정합성 검증 쿼리와 정정 절차: [qa-data-integrity.md](./qa-data-integrity.md)
-* 스키마 변경과 롤백 가능성: [qa-flexibility.md](./qa-flexibility.md)
-* 무상태 설계와 분산 락: [qa-flexibility.md](./qa-flexibility.md)
+* 복구 가능한 성질의 설계(RPO, RTO, 백업, 헬스체크): [qa-reliability-rationale.md](./qa-reliability-rationale.md)
+* 탐지와 경보, 소진율 기준: [qa-observability-rationale.md](./qa-observability-rationale.md)
+* 정합성 검증 쿼리와 정정 절차: [qa-data-integrity-rationale.md](./qa-data-integrity-rationale.md)
+* 스키마 변경과 롤백 가능성: [qa-flexibility-rationale.md](./qa-flexibility-rationale.md)
+* 무상태 설계와 분산 락: [qa-flexibility-rationale.md](./qa-flexibility-rationale.md)
 
 ## 13. 참고 문헌
 

@@ -1,4 +1,7 @@
-# 성능 효율성 (Performance Efficiency)
+# 성능 효율성 점검 항목의 근거
+
+판정용 항목 목록은 [qa-performance-efficiency-guideline.md](./qa-performance-efficiency-guideline.md) 에 있다.
+이 문서는 왜 그 기준인지와 예시를 담는다.
 
 주어진 조건에서 사용한 자원 대비 성능을 뜻한다.
 
@@ -319,9 +322,9 @@ public Resource get(Long id) {
 
 ## 8. 관련 문서
 
-* 확장 전략: [qa-flexibility.md](./qa-flexibility.md)
-* 캐시와 정합성의 충돌: [qa-tradeoffs.md](./qa-tradeoffs.md)
-* 측정 기반 판단: [qa-observability.md](./qa-observability.md)
+* 확장 전략: [qa-flexibility-rationale.md](./qa-flexibility-rationale.md)
+* 캐시와 정합성의 충돌: [qa-tradeoffs-rationale.md](./qa-tradeoffs-rationale.md)
+* 측정 기반 판단: [qa-observability-rationale.md](./qa-observability-rationale.md)
 
 ## 9. 참고 문헌
 

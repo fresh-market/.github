@@ -1,4 +1,7 @@
-# 호환성 (Compatibility)
+# 호환성 점검 항목의 근거
+
+판정용 항목 목록은 [qa-compatibility-guideline.md](./qa-compatibility-guideline.md) 에 있다.
+이 문서는 왜 그 기준인지와 예시를 담는다.
 
 같은 환경을 공유하면서 다른 제품과 정보를 교환하고 기능을 수행할 수 있는 정도를 뜻한다.
 
@@ -160,7 +163,7 @@ public record RecordListResponse(
 
 API만 계약이 아니다. DB 스키마와 메시지 스키마도 계약이다.
 
-> 이 절은 `qa-flexibility.md` 5장과 세 항목이 겹친다.
+> 이 절은 `qa-flexibility-rationale.md` 5장과 세 항목이 겹친다.
 > 컬럼 제거 단계는 `fresh-market/fm-infra`의 `INF-6-01`이 이 인프라의 확정 규칙으로 더 구체적이므로,
 > 겹칠 때는 그쪽만 발화하고 여기는 억제된다.
 
@@ -271,9 +274,9 @@ ISO 25010:2023의 상호작용 능력(interaction capability)은 최종 사용�
 
 ## 9. 관련 문서
 
-* 스키마 변경 전략: [qa-flexibility.md](./qa-flexibility.md) 5장
-* 자원 격리: [qa-reliability.md](./qa-reliability.md)
-* API 소비자 관점의 오류 계약: [qa-reliability.md](./qa-reliability.md)
+* 스키마 변경 전략: [qa-flexibility-rationale.md](./qa-flexibility-rationale.md) 5장
+* 자원 격리: [qa-reliability-rationale.md](./qa-reliability-rationale.md)
+* API 소비자 관점의 오류 계약: [qa-reliability-rationale.md](./qa-reliability-rationale.md)
 
 | 참고 | 링크 |
 |------|------|

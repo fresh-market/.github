@@ -52,24 +52,24 @@
 
 | 품질 속성 | 문서 | 백엔드 체감 비중 |
 |-----------|------|------------------|
-| 기능 적합성 | [qa-functional-suitability.md](./qa-functional-suitability.md) | 높음 |
-| 성능 효율성 | [qa-performance-efficiency.md](./qa-performance-efficiency.md) | 매우 높음 |
-| 신뢰성 | [qa-reliability.md](./qa-reliability.md) | 매우 높음 |
-| 보안 | [qa-security.md](./qa-security.md) | 매우 높음 |
-| 유지보수성 | [qa-maintainability.md](./qa-maintainability.md) | 매우 높음 |
-| 유연성과 확장성 | [qa-flexibility.md](./qa-flexibility.md) | 높음 |
-| 호환성 | [qa-compatibility.md](./qa-compatibility.md) | 높음 |
-| 데이터 정합성 | [qa-data-integrity.md](./qa-data-integrity.md) | 매우 높음 |
-| 관측 가능성 | [qa-observability.md](./qa-observability.md) | 높음 |
-| 인시던트 대응과 복구 | [qa-incident-response.md](./qa-incident-response.md) | 매우 높음 |
-| 속성 간 트레이드오프 | [qa-tradeoffs.md](./qa-tradeoffs.md) | 설계 판단 기준 |
+| 기능 적합성 | [qa-functional-suitability-rationale.md](./qa-functional-suitability-rationale.md) | 높음 |
+| 성능 효율성 | [qa-performance-efficiency-rationale.md](./qa-performance-efficiency-rationale.md) | 매우 높음 |
+| 신뢰성 | [qa-reliability-rationale.md](./qa-reliability-rationale.md) | 매우 높음 |
+| 보안 | [qa-security-rationale.md](./qa-security-rationale.md) | 매우 높음 |
+| 유지보수성 | [qa-maintainability-rationale.md](./qa-maintainability-rationale.md) | 매우 높음 |
+| 유연성과 확장성 | [qa-flexibility-rationale.md](./qa-flexibility-rationale.md) | 높음 |
+| 호환성 | [qa-compatibility-rationale.md](./qa-compatibility-rationale.md) | 높음 |
+| 데이터 정합성 | [qa-data-integrity-rationale.md](./qa-data-integrity-rationale.md) | 매우 높음 |
+| 관측 가능성 | [qa-observability-rationale.md](./qa-observability-rationale.md) | 높음 |
+| 인시던트 대응과 복구 | [qa-incident-response-rationale.md](./qa-incident-response-rationale.md) | 매우 높음 |
+| 속성 간 트레이드오프 | [qa-tradeoffs-rationale.md](./qa-tradeoffs-rationale.md) | 설계 판단 기준 |
 | LLM 기반 품질 검증 설계 | [qa-llm-verification.md](./qa-llm-verification.md) | 검증 자동화 |
 | 미결정 값 | [pending-decisions.md](./pending-decisions.md) | 근거 없는 예시값 목록 |
 | 검증 실행 방법과 워크 플로우 | [fresh-market/fm-backend 의 docs/verification/](https://github.com/fresh-market/fm-backend/blob/main/docs/verification/verification-guide.md) | 사용 설명 |
 
 ### 별도 문서를 두지 않은 특성
 
-* **상호작용 능력(interaction capability)**: 서버 사이드 렌더링이 없는 API 서버에서는 최종 사용자 UI가 아니라 API 소비자(클라이언트 개발자)의 사용성 문제로 나타난다. 리소스 명명, 오류 메시지, 문서화 형태로 [qa-compatibility.md](./qa-compatibility.md)에서 다룬다.
+* **상호작용 능력(interaction capability)**: 서버 사이드 렌더링이 없는 API 서버에서는 최종 사용자 UI가 아니라 API 소비자(클라이언트 개발자)의 사용성 문제로 나타난다. 리소스 명명, 오류 메시지, 문서화 형태로 [qa-compatibility-rationale.md](./qa-compatibility-rationale.md)에서 다룬다.
 * **안전성(safety)**: 인명이나 물리적 위해와 직결되는 도메인(의료 기기, 차량 제어 등)에서 독립 특성으로 다룬다. 커머스 백엔드에서는 금전 사고 방지가 이에 대응하며, 데이터 정합성과 보안 문서로 흡수했다.
 
 ## 인시던트 대응을 별도로 둔 이유
