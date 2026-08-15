@@ -11,6 +11,7 @@
 #   verify.sh HEAD~1               그 앞 커밋 하나. git 이 읽는 그대로다
 #   verify.sh <SHA>                그 커밋 하나
 #   verify.sh -n 5                 최신 5개
+#   verify.sh --full               common, infra 항목까지 판정한다 (기본은 backend 만)
 #   verify.sh <base> <head>        두 개를 주면 그 구간을 그대로 쓴다
 #   verify.sh --agent claude       지시문을 그 명령에 넘긴다
 #   verify.sh --agent "gemini -p"  임의의 CLI 에 넘긴다
@@ -24,13 +25,15 @@ set -u
 TARGET=$PWD
 AGENT=""
 COUNT=""
+FULL=0
 ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --target) TARGET=$2; shift 2 ;;
         --agent)  AGENT=$2;  shift 2 ;;
         -n)       COUNT=$2;  shift 2 ;;
-        -h|--help) sed -n '3,19p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --full)   FULL=1;    shift ;;
+        -h|--help) sed -n '3,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) ARGS+=("$1"); shift ;;
     esac
 done
@@ -138,7 +141,17 @@ SCOPE=$(python3 "$COMMON/.github/llm-verify/run.py" --mode match \
     --backend "$TARGET" --common "$COMMON" --infra "$INFRA" \
     --base "$BASE_SHA" --head "$HEAD_SHA")
 
-# --- 3. 판정 지시문 -----------------------------------------------------
+# --- 3. 판정 범위 -------------------------------------------------------
+# 기본은 1단계(backend)만 본다. 전부 보면 기준 문서 12개에 확정값까지 읽어야 해서
+# 판정 한 번에 20만 토큰이 넘어가고, 작업 중 반복 실행하는 도구로 쓸 수 없다.
+# 2단계(common, infra)는 --full 로 연다.
+if [ "$FULL" = "1" ]; then
+    STAGE_NOTE="전부. 1단계와 2단계 모두"
+else
+    STAGE_NOTE="1단계만 (backend). common 과 infra 항목은 판정하지 않는다. 전부 보려면 --full"
+fi
+
+# --- 4. 판정 지시문 -----------------------------------------------------
 # 절차 본문은 담지 않는다. 문서를 가리키기만 해서 절차가 한 곳에만 있게 한다.
 PROMPT=$(cat <<EOF
 $COMMON/docs/verification/g-local.md 의 절차대로 G-LOCAL 판정을 수행하라.
@@ -149,6 +162,7 @@ $COMMON/docs/verification/g-local.md 의 절차대로 G-LOCAL 판정을 수행�
             infra=$INFRA
 계산 결과   $SCOPE
 빌드 게이트  $BUILD_RESULT
+판정 범위   $STAGE_NOTE
 
 계산(1장)은 끝났다. 2장부터 진행하라.
 EOF

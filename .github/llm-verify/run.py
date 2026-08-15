@@ -41,6 +41,14 @@ ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{}:generateC
 # 8192 를 남기면 출력에 57344 가 남아 300건대를 쓰기에 넉넉하다.
 THINKING_BUDGET = 8192
 
+# CI 가 판정하는 단계. 1단계가 backend, 2단계가 common + infra 다.
+#
+# CI 는 1단계만 본다. 2단계는 G-LOCAL 이 맡는다.
+# 2단계를 넣으면 호출이 배로 늘어 무료 티어 분당 10회를 한 PR 이 다 쓰고,
+# 정작 판정 대상 코드는 backend 뿐이라 얻는 것에 비해 비용이 크다.
+# 되돌리려면 (1, 2) 로 바꾸면 된다. 항목의 ci_stage 는 그대로 두었다.
+CI_STAGES = (1,)
+
 # 한 호출에 넣는 항목 수. 예산을 묶어도 한 번에 200건을 요구하면 출력이 여전히 크다.
 # 나눠 부르면 호출당 출력이 그만큼 줄어 MAX_TOKENS 를 넘길 일이 없다.
 # 무료 티어가 분당 10회라 50 이면 300건대에서 7회 안팎으로 한도 안에 들어온다.
@@ -485,6 +493,8 @@ def render(ctx):
     L.append(f"매칭된 규칙 `{'`, `'.join(ctx['rules'])}`" + ("  (기본 규칙)" if ctx["fallback"] else ""))
     L.append(f"활성 항목 **{ctx['active_n']}건**  "
              f"(backend {ctx['by_repo']['backend']}, common {ctx['by_repo']['common']}, infra {ctx['by_repo']['infra']})")
+    if ctx.get("deferred"):
+        L.append(f"G-LOCAL 담당 {len(ctx['deferred'])}건은 여기서 보지 않는다 (common, infra 항목)")
     L.append("")
 
     for stage, info in ctx["stages"].items():
@@ -629,10 +639,13 @@ def main():
         active = active_items(rules, registries)
         baseline_ids = sorted(i for i in active
                               if i.startswith("REL-") or i.startswith("INF-"))
+        s1 = [i for i, it in active.items() if it.get("ci_stage", 1) == 1]
         payload = {
             "needs_baseline": "true" if needs_baseline and baseline_ids else "false",
             "baseline_items": str(len(baseline_ids)),
             "active": str(len(active)),
+            "stage1": str(len(s1)),
+            "stage2": str(len(active) - len(s1)),
             "rules": ",".join(r["id"] for r in rules),
             "changed": str(len(files)),
         }
@@ -652,6 +665,14 @@ def main():
         registries["infra"] = items_of(Path(args.infra) / ".github/llm-verify/items.yml")
 
     active = active_items(rules, registries)
+
+    # CI 가 보지 않는 단계의 항목은 활성에서 뺀다.
+    # 남겨 두면 판정하지 않은 것이 UNJUDGED 로 쌓여, 담당이 아니어서 안 본 것과
+    # 물었는데 답이 안 온 것이 뒤섞인다. 그 둘은 조치가 다르다.
+    deferred_to_local = {i: it for i, it in active.items()
+                         if it.get("ci_stage", 1) not in CI_STAGES}
+    active = {i: it for i, it in active.items() if i not in deferred_to_local}
+
     if not active:
         Path(args.out).write_text("<!-- llm-verify -->\n활성 항목이 없다.\n", encoding="utf-8")
         return 0
@@ -697,7 +718,7 @@ def main():
         shadow = [i for i in active if i in intentional and i in conflicts]
         print(f"의도된 이탈 {len(eff)}건"
               + (f" (모순으로 가려진 것 {len(shadow)}건: {', '.join(shadow)})" if shadow else ""))
-        for s in (1, 2):
+        for s in CI_STAGES:
             batch = by_stage.get(s, [])
             if batch:
                 p = build_prompt(batch, diff, anchor_files if s == 1 else {},
@@ -708,7 +729,7 @@ def main():
 
     results, stages = [], {}
     stage1_ok = True
-    for stage in (1, 2):
+    for stage in CI_STAGES:
         batch = by_stage.get(stage, [])
         if not batch:
             continue
@@ -761,6 +782,7 @@ def main():
     ctx = {
         "rules": [r["id"] for r in rules], "fallback": fallback,
         "active": active, "active_n": len(active), "by_repo": by_repo,
+        "deferred": deferred_to_local,
         "stages": stages, "new": new, "existing": existing,
         "conflicting": conflicting, "insufficient": insufficient,
         "unjudged": unjudged, "counts": counts,
