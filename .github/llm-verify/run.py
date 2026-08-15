@@ -227,6 +227,78 @@ def read_files(root, patterns, limit_bytes=400_000):
     return got, absent, failed
 
 
+# --- DDL 좁히기 ---------------------------------------------------------
+
+TABLE_RE = re.compile(r"^CREATE TABLE (\w+)", re.M)
+REF_RE = re.compile(r"REFERENCES\s+(\w+)\s*\(", re.I)
+JPA_TABLE_RE = re.compile(r'@Table\s*\(\s*name\s*=\s*"(\w+)"')
+
+
+def snake(name):
+    """FreshOrder -> fresh_order. @Table 이 없을 때 JPA 기본 전략을 흉내낸다."""
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
+
+
+def slice_ddl(text, wanted):
+    """
+    스키마에서 필요한 테이블 정의만 남긴다.
+
+    엔티티 하나를 고쳐도 32개 테이블 7만 자가 통째로 붙던 것을 줄인다.
+    FK 로 한 단계 이어진 테이블까지 함께 남긴다. 참조 대상이 빠지면 제약의 근거가 끊긴다.
+    이 스키마는 복합 외래 키로 조상 키를 복제하는 설계라 테이블 사이 결합이 보통보다 강하다.
+
+    무엇 하나라도 못 찾으면 통째로 돌려준다. 잘라서 근거를 잃는 것보다 큰 편이 낫다.
+    """
+    blocks, order = {}, []
+    for m in TABLE_RE.finditer(text):
+        name = m.group(1)
+        end = text.find("\nCREATE TABLE ", m.end())
+        blocks[name] = text[m.start():end if end != -1 else len(text)]
+        order.append(name)
+    if not blocks or not wanted or not wanted <= set(blocks):
+        return text, None
+
+    keep = set(wanted)
+    for t in list(wanted):
+        keep |= {r for r in REF_RE.findall(blocks[t]) if r in blocks}
+    head = text[:text.find("CREATE TABLE")] if "CREATE TABLE" in text else ""
+    body = "\n".join(blocks[t] for t in order if t in keep)
+    note = (f"-- 전체 {len(blocks)}개 중 {len(keep)}개만 실었다. "
+            f"바뀐 엔티티가 쓰는 테이블과 FK 로 이어진 것이다.\n"
+            f"-- 나머지는 이 변경과 무관하다.\n")
+    return head + note + body, (len(keep), len(blocks))
+
+
+def tables_in_diff(text, changed_lines):
+    """
+    바뀐 줄이 어느 테이블 정의 안에 있는지 찾는다.
+
+    SQL 만 고친 커밋에서는 엔티티가 기준이 될 수 없다. 아직 엔티티가 없는 테이블을
+    고쳤을 때 정작 그 테이블이 빠지기 때문이다. 바뀐 줄의 위치로 직접 찾는다.
+    """
+    names, start, cur = set(), {}, None
+    for n, line in enumerate(text.splitlines(), 1):
+        m = TABLE_RE.match(line)
+        if m:
+            cur = m.group(1)
+            start[cur] = n
+        if cur and n in changed_lines:
+            names.add(cur)
+    return names
+
+
+def tables_of(java_texts):
+    """자바 소스에서 테이블 이름을 뽑는다. @Table 이 없으면 클래스명을 스네이크로 바꾼다."""
+    names = set()
+    for path, text in java_texts.items():
+        m = JPA_TABLE_RE.search(text)
+        if m:
+            names.add(m.group(1))
+        elif "@Entity" in text:
+            names.add(snake(Path(path).stem))
+    return names
+
+
 def collect_docs(active, roots):
     """활성 항목이 속한 판정 기준 문서만 읽는다."""
     doc_dirs = {
@@ -706,6 +778,27 @@ def main():
             L = [f"# 활성 점검 항목 {len(active)}건",
                  f"# 대상 {own}  범위 {args.base[:7]}..{args.head[:7]}",
                  f"# 규칙 {', '.join(r['id'] for r in rules)}", ""]
+
+            # 스키마에서 어느 테이블을 볼지 알려준다.
+            # 판정하는 쪽이 이것을 모르면 811줄 7만 자를 통째로 읽는다.
+            anchor_pats = sorted({p for r in rules for p in (r.get("anchors") or [])})
+            if any(p.endswith(".sql") for p in anchor_pats):
+                java, _, _ = read_files(args.backend, ["**/domain/entity/*.java"])
+                changed_java = {f: t for f, t in java.items() if f in files}
+                added_here = added_lines(unified_diff(args.backend, args.base, args.head))
+                sqls, _, _ = read_files(args.backend, [p for p in anchor_pats if p.endswith(".sql")])
+                for path, text in sqls.items():
+                    # judge 모드와 같은 기준으로 고른다. 둘이 갈리면 로컬과 CI 가 다른 것을 본다.
+                    want = tables_in_diff(text, added_here.get(path, set()))
+                    want |= tables_of(changed_java)
+                    want = want or tables_of(java)
+                    _, info = slice_ddl(text, want)
+                    if not info:
+                        continue
+                    L += [f"## 스키마 {path}",
+                          f"이 변경과 관련된 테이블 {info[0]}개만 본다 (전체 {info[1]}개).",
+                          f"직접 관련된 것: {', '.join(sorted(want))}",
+                          "여기에 FK 로 이어진 테이블까지 함께 본다. 나머지는 읽지 않는다.", ""]
             for repo in sorted({it["repo"] for it in active.values()}):
                 sel = {i: it for i, it in active.items() if it["repo"] == repo}
                 L.append(f"## {repo} {len(sel)}건" + ("  (기본 판정 범위)" if repo == own else "  (--full 일 때만)"))
@@ -746,6 +839,24 @@ def main():
 
     anchor_patterns = sorted({p for r in rules for p in (r.get("anchors") or [])})
     anchor_files, absent, failed = read_files(args.backend, anchor_patterns)
+
+    # 스키마는 바뀐 엔티티가 쓰는 테이블만 남긴다. 앵커 분량의 대부분이 이 파일이다.
+    # 어느 테이블인지 알 수 없으면 통째로 둔다.
+    ddl_note = None
+    for path in [k for k in anchor_files if k.endswith(".sql")]:
+        changed_java = {f: anchor_files[f] for f in anchor_files
+                        if f.endswith(".java") and f in files}
+        # SQL 자체가 바뀌었으면 바뀐 줄이 든 테이블이 기준이다.
+        # 엔티티가 바뀌었으면 그 엔티티가 쓰는 테이블이 기준이다. 둘 다면 합친다.
+        wanted = tables_in_diff(anchor_files[path], added.get(path, set()))
+        wanted |= tables_of(changed_java)
+        wanted = wanted or tables_of(
+            {f: t for f, t in anchor_files.items() if f.endswith(".java")})
+        sliced, info = slice_ddl(anchor_files[path], wanted)
+        if info:
+            anchor_files[path] = sliced
+            ddl_note = f"{path} {info[0]}/{info[1]}개 테이블"
+
     docs, missing_docs = collect_docs(active, roots)
     # 확정값은 2단계 프롬프트에만 들어간다. 2단계를 돌지 않으면 읽어 봐야 쓰이지 않는다.
     # 문서 10개에 29만 자라 읽는 것만으로도 낭비다.
@@ -775,7 +886,8 @@ def main():
         for it in active.values():
             by_repo[it["repo"]] += 1
         print(f"  저장소별  {dict(by_repo)}")
-        print(f"앵커 파일   읽음 {len(anchor_files)}, 부재 {len(absent)}, 실패 {len(failed)}")
+        print(f"앵커 파일   읽음 {len(anchor_files)}, 부재 {len(absent)}, 실패 {len(failed)}"
+              + (f"  (스키마 {ddl_note})" if ddl_note else ""))
         print(f"기준 문서   {len(docs)}건" + (f", 못 읽음 {missing_docs}" if missing_docs else ""))
         print(f"확정값      " + (f"{len(baseline)}건" if baseline else "불필요")
               + (f", 못 읽음 {baseline_failed}" if baseline_failed else ""))
