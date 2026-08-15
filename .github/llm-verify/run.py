@@ -34,6 +34,13 @@ import yaml
 MODEL = "gemini-2.5-flash"
 ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent"
 
+# 사고 토큰이 maxOutputTokens 예산에서 나간다.
+# 묶지 않으면 동적으로 배정되는데, 11만 토큰짜리 프롬프트로 200건을 판정하는 동안
+# 예산을 다 써서 정작 답을 쓸 자리가 남지 않고 finishReason=MAX_TOKENS 로 끝난다.
+# 그러면 항목 전부가 UNJUDGED 가 되므로 게이트가 없는 것과 같다.
+# 8192 를 남기면 출력에 57344 가 남아 300건대를 쓰기에 넉넉하다.
+THINKING_BUDGET = 8192
+
 VERDICTS = ["VIOLATION", "OK", "NOT_APPLICABLE", "INSUFFICIENT_EVIDENCE", "CONFLICTING_BASELINE"]
 
 
@@ -397,6 +404,7 @@ def _call_once(api_key, prompt, expected_ids):
             "responseMimeType": "application/json",
             "responseSchema": SCHEMA,
             "maxOutputTokens": 65536,
+            "thinkingConfig": {"thinkingBudget": THINKING_BUDGET},
         },
     }
     req = urllib.request.Request(
