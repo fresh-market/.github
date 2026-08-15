@@ -620,8 +620,19 @@ def main():
 
     if args.mode == "match":
         out = os.environ.get("GITHUB_OUTPUT")
+        # 확정값 문서는 29만 자라 판정 입력에서 가장 크다. 규칙이 걸렸다는 이유만으로
+        # 통째로 읽으면 그것만으로 컨텍스트가 찬다. 값을 대조하는 항목은 REL 과 INF 뿐이므로
+        # 그것이 실제로 활성일 때만 읽으라고 알려준다.
+        registries = {r: items_of(Path(p) / ".github/llm-verify/items.yml")
+                      for r, p in (("backend", args.backend), ("common", args.common),
+                                   ("infra", args.infra))}
+        active = active_items(rules, registries)
+        baseline_ids = sorted(i for i in active
+                              if i.startswith("REL-") or i.startswith("INF-"))
         payload = {
-            "needs_baseline": "true" if needs_baseline else "false",
+            "needs_baseline": "true" if needs_baseline and baseline_ids else "false",
+            "baseline_items": str(len(baseline_ids)),
+            "active": str(len(active)),
             "rules": ",".join(r["id"] for r in rules),
             "changed": str(len(files)),
         }

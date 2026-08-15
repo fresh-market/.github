@@ -115,9 +115,13 @@ echo
 # CI 에서는 이 둘이 병합을 차단한다. 여기서는 알리기만 한다.
 #   *.domain.service.* 메서드 커버리지 100%
 #   정적 분석 신규 Blocker 0건
+#
+# --no-daemon 을 쓰지 않는다. 반복 실행하는 도구인데 매번 JVM 을 새로 띄우면
+# 한 번에 20~30초가 든다. 데몬을 살려두면 두 번째부터 몇 초로 줄어든다.
+# CI 는 일회성 러너라 거기서는 --no-daemon 이 맞고, 그쪽은 pr-gate.yml 이 따로 준다.
 BUILD_RESULT="건너뜀 (gradlew 없음)"
 if [ -x "$TARGET/gradlew" ]; then
-    if (cd "$TARGET" && ./gradlew check --no-daemon -q); then
+    if (cd "$TARGET" && ./gradlew check -q); then
         BUILD_RESULT="통과"
     else
         BUILD_RESULT="미달. CI 에서는 여기서 병합이 막힌다"
