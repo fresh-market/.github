@@ -126,7 +126,11 @@ jobs:
             --out verify-out.md
 
       # --- 16단계: 출력 ---
-      # 같은 코멘트를 갱신한다. push 마다 새 코멘트를 달면 6장이 경계한 소음이 된다.
+      #
+      # push 마다 새 코멘트를 단다. 갱신(PATCH)으로 두면 타임라인 위치가 안 움직여서
+      # 판정이 새로 나와도 대화에 아무 항목이 안 생기고 알림도 가지 않는다.
+      # 판정이 갱신된 것을 아무도 모르는 것이 코멘트가 쌓이는 것보다 나쁘다.
+      # 어느 커밋에 대한 판정인지는 본문 머리에 적힌다.
       - name: 리뷰 코멘트
         if: always() && hashFiles('verify-out.md') != ''
         env:
@@ -134,17 +138,9 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
-          ID=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
-                 --jq '[.[] | select(.body | startswith("<!-- llm-verify -->"))][0].id')
-          if [ -n "$ID" ] && [ "$ID" != "null" ]; then
-            gh api --method PATCH "repos/$REPO/issues/comments/$ID" \
-              -F body=@verify-out.md >/dev/null
-            echo "코멘트 갱신 $ID"
-          else
-            gh api --method POST "repos/$REPO/issues/$PR/comments" \
-              -F body=@verify-out.md >/dev/null
-            echo "코멘트 생성"
-          fi
+          gh api --method POST "repos/$REPO/issues/$PR/comments" \
+            -F body=@verify-out.md >/dev/null
+          echo "코멘트 생성"
 
       - name: 요약
         if: always()

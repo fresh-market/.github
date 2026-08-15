@@ -579,7 +579,10 @@ def origin(it):
 
 
 def render(ctx):
-    L = ["<!-- llm-verify -->", "## LLM 검증 (G-PR)", ""]
+    # push 마다 새 코멘트가 달리므로 어느 커밋에 대한 판정인지 머리에 적는다.
+    # 없으면 코멘트가 쌓였을 때 어느 것이 지금 코드에 대한 것인지 알 수 없다.
+    L = ["<!-- llm-verify -->", "## LLM 검증 (G-PR)", "",
+         f"커밋 `{ctx['head'][:7]}` 판정, {ctx['at']}", ""]
     L.append(f"매칭된 규칙 `{'`, `'.join(ctx['rules'])}`" + ("  (기본 규칙)" if ctx["fallback"] else ""))
     L.append(f"활성 항목 **{ctx['active_n']}건**  "
              f"(backend {ctx['by_repo']['backend']}, common {ctx['by_repo']['common']}, infra {ctx['by_repo']['infra']})")
@@ -963,6 +966,8 @@ def main():
 
     ctx = {
         "rules": [r["id"] for r in rules], "fallback": fallback,
+        "head": args.head,
+        "at": time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime()),
         "active": active, "active_n": len(active), "by_repo": by_repo,
         "deferred": deferred_to_local,
         "stages": stages, "new": new, "existing": existing,
