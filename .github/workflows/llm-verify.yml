@@ -61,12 +61,23 @@ jobs:
           path: common
           fetch-depth: 0
 
-      - name: common 을 기준 시점으로 고정
+      # 판정 기준은 시점을 고정하고 판정 도구는 고정하지 않는다.
+      #
+      # 기준(items.yml, 가이드 문서)을 고정하는 이유는 2.2절에 있다. 심사 중 기준이 바뀌면
+      # 고치지 않은 코드에 새 위반이 생긴다.
+      # 도구(run.py)까지 함께 고정하면, 도구의 버그를 고쳐도 그 전에 갈라져 나온 PR 은
+      # 계속 같은 버그로 실패한다. 고칠 방법이 PR 을 다시 만드는 것밖에 없어진다.
+      - name: common 을 기준 시점으로 고정하고 도구만 최신으로 둔다
         working-directory: common
         run: |
+          LATEST=$(git rev-parse HEAD)
           SHA=$(git rev-list -1 --before="${{ steps.scope.outputs.at }}" HEAD)
           git checkout -q "$SHA"
-          echo "common @ $SHA"
+          git checkout -q "$LATEST" -- .github/llm-verify/
+          git checkout -q "$SHA" -- .github/llm-verify/items.yml \
+                                    .github/llm-verify/known-conflicts.yml
+          echo "기준 @ $SHA"
+          echo "도구 @ $LATEST"
 
       - uses: actions/setup-python@v5
         with:
