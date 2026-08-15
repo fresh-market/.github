@@ -41,6 +41,12 @@ ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{}:generateC
 # 8192 를 남기면 출력에 57344 가 남아 300건대를 쓰기에 넉넉하다.
 THINKING_BUDGET = 8192
 
+# 한 호출에 넣는 항목 수. 예산을 묶어도 한 번에 200건을 요구하면 출력이 여전히 크다.
+# 나눠 부르면 호출당 출력이 그만큼 줄어 MAX_TOKENS 를 넘길 일이 없다.
+# 무료 티어가 분당 10회라 50 이면 300건대에서 7회 안팎으로 한도 안에 들어온다.
+# 한 덩어리가 실패해도 나머지 판정은 살아남는다.
+CHUNK = 50
+
 VERDICTS = ["VIOLATION", "OK", "NOT_APPLICABLE", "INSUFFICIENT_EVIDENCE", "CONFLICTING_BASELINE"]
 
 
@@ -482,12 +488,14 @@ def render(ctx):
     L.append("")
 
     for stage, info in ctx["stages"].items():
+        n_chunk = info.get("chunks")
+        tail = f" ({n_chunk}회 나눠 호출)" if n_chunk and n_chunk > 1 else ""
         if info["error"]:
-            L.append(f"- {stage}단계 **실패**: {info['error']}  -> 해당 항목 `UNJUDGED`")
+            L.append(f"- {stage}단계 **실패**: {info['error']}  -> 해당 항목 `UNJUDGED`{tail}")
         elif not info["complete"]:
-            L.append(f"- {stage}단계 부분 응답: {info['detail']}  -> 누락분 `UNJUDGED`")
+            L.append(f"- {stage}단계 부분 응답: {info['detail']}  -> 누락분 `UNJUDGED`{tail}")
         else:
-            L.append(f"- {stage}단계 완료 {info['n']}건")
+            L.append(f"- {stage}단계 완료 {info['n']}건{tail}")
     L.append("")
 
     if ctx["new"]:
@@ -502,6 +510,13 @@ def render(ctx):
             if r.get("fix"):
                 L.append(f"- 고치기: {r['fix']}")
             L.append("")
+    elif ctx["unjudged"]:
+        # 판정이 안 된 것과 위반이 없는 것은 다르다.
+        # 전부 미판정인데 "위반 없음" 을 상단에 내면 게이트가 통과한 것으로 읽힌다.
+        L.append(f"### 판정하지 못했다. 미판정 {len(ctx['unjudged'])}건")
+        L.append("")
+        L.append("**위반이 없다는 뜻이 아니다.** 아래 상자에 미판정 목록이 있다.")
+        L.append("")
     else:
         L.append("### 이 PR 이 만든 위반 없음")
         L.append("")
@@ -547,7 +562,7 @@ def render(ctx):
         L.append("<details><summary>미판정 " + str(len(ctx["unjudged"])) + "건</summary>")
         L.append("")
         L.append("**통과가 아니다.** 물어보지 않았거나 응답이 오지 않은 항목이다. "
-                 "로컬에서 `/verify` 를 돌리면 전부 판정된다.")
+                 "로컬에서 `./verify.sh` 를 돌리면 전부 판정된다.")
         L.append("")
         for i in ctx["unjudged"][:60]:
             L.append(f"- `{i}` {ctx['active'][i]['title']}")
@@ -689,22 +704,30 @@ def main():
         if stage == 2 and not stage1_ok:
             stages[2] = {"error": "1단계가 온전하지 않아 건너뜀", "complete": False, "detail": "", "n": 0}
             continue
-        ids = [i["id"] for i in batch]
         # 확정값은 2단계에만 넣는다. 값을 대조하는 항목(REL, INF)이 전부 거기 있다
-        prompt = build_prompt(batch, diff, anchor_files if stage == 1 else {},
-                              absent, docs, conflicts, intentional,
-                              baseline if stage == 2 else None)
-        resp, err = call_gemini(api_key, prompt, ids)
-        if err:
-            stages[stage] = {"error": err, "complete": False, "detail": "", "n": 0}
-            if stage == 1:
-                stage1_ok = False
-            continue
-        stages[stage] = {"error": None, "complete": resp["complete"],
-                         "detail": resp["detail"], "n": len(resp["results"])}
-        if stage == 1 and not resp["complete"]:
+        chunks = [batch[i:i + CHUNK] for i in range(0, len(batch), CHUNK)]
+        got, errs, partial = [], [], []
+        for n, chunk in enumerate(chunks, 1):
+            ids = [i["id"] for i in chunk]
+            prompt = build_prompt(chunk, diff, anchor_files if stage == 1 else {},
+                                  absent, docs, conflicts, intentional,
+                                  baseline if stage == 2 else None)
+            resp, err = call_gemini(api_key, prompt, ids)
+            if err:
+                errs.append(f"{n}/{len(chunks)}: {err}")
+                continue
+            if not resp["complete"]:
+                partial.append(f"{n}/{len(chunks)}: {resp['detail']}")
+            got += [r for r in resp["results"] if r["id"] in active]
+
+        complete = not errs and not partial
+        detail = "; ".join(errs + partial)
+        stages[stage] = {"error": "; ".join(errs) if errs else None,
+                         "complete": complete, "detail": detail, "n": len(got),
+                         "chunks": len(chunks)}
+        if stage == 1 and not complete:
             stage1_ok = False
-        results += [r for r in resp["results"] if r["id"] in active]
+        results += got
 
     judged = {r["id"] for r in results}
     unjudged = [i for i in active if i not in judged]
