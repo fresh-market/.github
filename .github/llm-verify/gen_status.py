@@ -7,9 +7,17 @@
 손으로 쓰면 항목이 늘거나 규칙이 바뀔 때마다 조용히 어긋난다.
 이 문서의 숫자는 전부 파생값이므로 사람이 고치지 않는다.
 
-    python3 gen_status.py <저장소들의 부모 디렉터리> -o <출력 파일>
+    python3 gen_status.py --backend <경로> --common <경로> --infra <경로> -o <출력 파일>
 
-    python3 gen_status.py ../../.. -o ../../../backend/docs/verification/verification-status.md
+    python3 gen_status.py --backend ../../../fm-backend \\
+                          --common  ../../../.github \\
+                          --infra   ../../../fm-infra \\
+                          -o ../../../fm-backend/docs/verification/verification-status.md
+
+    이 스크립트는 common 저장소의 .github/llm-verify/ 에 있다. 세 단계 위가 저장소들의 부모다.
+
+저장소 이름이 바뀌어도 동작하도록 경로를 각각 받는다.
+디렉터리 이름을 가정하면 클론 이름이 다른 사람에게서 조용히 실패한다. run.py 와 같은 방식이다.
 """
 
 import argparse
@@ -32,14 +40,16 @@ def git(root, *args):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("root", help="common, backend, infra 가 나란히 있는 디렉터리")
+    for r in REPOS:
+        ap.add_argument(f"--{r}", required=True, help=f"{r} 저장소 경로")
     ap.add_argument("-o", "--out", required=True)
     args = ap.parse_args()
-    B = Path(args.root).resolve()
+    # 저장소 이름이 아니라 갈래 이름을 키로 쓴다. 경로는 인자가 정한다
+    R = {r: Path(getattr(args, r)).resolve() for r in REPOS}
 
-    regs = {r: items_of(B / r / ".github/llm-verify/items.yml") for r in REPOS}
-    anchors = load_yaml(B / "backend/.github/llm-verify/anchors.yml")
-    conflicts = load_yaml(B / "common/.github/llm-verify/known-conflicts.yml")
+    regs = {r: items_of(R[r] / ".github/llm-verify/items.yml") for r in REPOS}
+    anchors = load_yaml(R["backend"] / ".github/llm-verify/anchors.yml")
+    conflicts = load_yaml(R["common"] / ".github/llm-verify/known-conflicts.yml")
     # active_items 가 붙여 주는 repo 를 원본에도 달아 둔다
     allit = [dict(i, repo=r) for r, v in regs.items() for i in v]
     byid = {i["id"]: i for i in allit}
@@ -60,18 +70,18 @@ def main():
     unreach = [i for i in allit if i["id"] not in reach]
 
     # 판정 대상이 있는가
-    java = list((B / "backend").glob("src/**/*.java"))
+    java = list(R["backend"].glob("src/**/*.java"))
     have = {
         "backend 의 Java 코드": (len(java) > 0, f"{len(java)}개"),
-        "backend/build.gradle": ((B / "backend/build.gradle").is_file(), ""),
-        "backend 앵커 규칙": ((B / "backend/.github/llm-verify/anchors.yml").is_file(),
+        "backend/build.gradle": ((R["backend"] / "build.gradle").is_file(), ""),
+        "backend 앵커 규칙": ((R["backend"] / ".github/llm-verify/anchors.yml").is_file(),
                           f"규칙 {len(anchors['rules'])}개"),
-        "infra 앵커 규칙": ((B / "infra/.github/llm-verify/anchors.yml").is_file(), ""),
-        "G-PR 호출자 워크플로": ((B / "backend/.github/workflows/llm-verify.yml").is_file(), ""),
-        "G-PR 본체 워크플로": ((B / "common/.github/workflows/llm-verify.yml").is_file(), ""),
-        "G-LOCAL 절차": ((B / "backend/.claude/commands/verify.md").is_file(), ""),
+        "infra 앵커 규칙": ((R["infra"] / ".github/llm-verify/anchors.yml").is_file(), ""),
+        "G-PR 호출자 워크플로": ((R["backend"] / ".github/workflows/llm-verify.yml").is_file(), ""),
+        "G-PR 본체 워크플로": ((R["common"] / ".github/workflows/llm-verify.yml").is_file(), ""),
+        "G-LOCAL 절차": ((R["backend"] / ".claude/commands/verify.md").is_file(), ""),
         "레지스트리 검사 워크플로": (
-            all((B / r / ".github/workflows/registry-check.yml").is_file() for r in REPOS),
+            all((R[r] / ".github/workflows/registry-check.yml").is_file() for r in REPOS),
             "3개 저장소"),
     }
 
@@ -87,7 +97,7 @@ def main():
     w("| 저장소 | 커밋 | 항목 |")
     w("|---|---|---:|")
     for r in REPOS:
-        w(f"| `{r}` | `{git(B / r, 'rev-parse', '--short', 'HEAD')}` | {len(regs[r])} |")
+        w(f"| `{r}` | `{git(R[r], 'rev-parse', '--short', 'HEAD')}` | {len(regs[r])} |")
     w(f"| | | **{len(allit)}** |")
     w("")
 
