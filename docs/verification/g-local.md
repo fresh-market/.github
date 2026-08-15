@@ -111,6 +111,7 @@ verdict          VIOLATION,  OK,  NOT_APPLICABLE,  INSUFFICIENT_EVIDENCE,  CONFL
 
 ```
 SEC-1-01  리소스 접근 시 소유권 또는 권한을 검증하는가
+  기준: common `qa-security.md` 1장
   OrderService.java:4
   id 로 조회만 하고 호출자가 소유자인지 확인하지 않는다
   인증 주체의 식별자를 조회 조건에 포함한다
@@ -135,23 +136,28 @@ G-LOCAL  <커밋 SHA 앞 7자리>  <메시지>
 
 VIOLATION <n>건
   <ID>  <제목>
+    기준: <저장소> <doc> <ch>장
     파일:줄
     무엇이 문제인가 한 줄
     어떻게 고치는가 한 줄
 
 CONFLICTING_BASELINE <n>건
-  <ID>  <제목>
+  <ID>  <제목>  (기준: <저장소> <doc> <ch>장)
     <문서 A>: <값>
     <문서 B>: <값>
     -> 결정 필요
 
 INSUFFICIENT_EVIDENCE <n>건
-  <ID>  <제목>  못 읽은 앵커: <경로>
+  <ID>  <제목>  (기준: <저장소> <doc> <ch>장)  못 읽은 앵커: <경로>
 
 OK <n>  NOT_APPLICABLE <n>
 ```
 
 `VIOLATION` 만 자세히 쓰고 나머지는 건수와 ID 만 낸다.
+
+**기준 줄은 빼지 않는다.** 항목 ID 와 제목만 주면 받는 쪽이 근거 본문을 찾을 수 없다.
+항목이 세 저장소에 흩어져 있어서 어느 저장소인지부터 알아야 한다.
+`doc` 과 `ch` 는 `items.yml` 에 이미 있으므로 옮겨 적기만 하면 된다.
 `INSUFFICIENT_EVIDENCE` 가 계속 같은 항목에서 나오면 `anchors.yml` 의 앵커 목록이 부족한 것이므로 그 사실을 함께 말한다.
 
 ## 5. 기록

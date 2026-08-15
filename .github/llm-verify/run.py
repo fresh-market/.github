@@ -457,6 +457,15 @@ def split_new(results, added):
     return new, existing
 
 
+def origin(it):
+    """항목이 어느 저장소 어느 문서 몇 장에서 왔는지. 지적만 받고 기준 본문을 못 찾는 일을 막는다."""
+    doc = it.get("doc")
+    if not doc:
+        return ""
+    ch = it.get("ch")
+    return f"{it.get('repo','?')} `{doc}`" + (f" {ch}장" if ch else "")
+
+
 def render(ctx):
     L = ["<!-- llm-verify -->", "## LLM 검증 (G-PR)", ""]
     L.append(f"매칭된 규칙 `{'`, `'.join(ctx['rules'])}`" + ("  (기본 규칙)" if ctx["fallback"] else ""))
@@ -479,6 +488,7 @@ def render(ctx):
         for r in ctx["new"]:
             it = ctx["active"][r["id"]]
             L.append(f"**`{r['id']}`** {it['title']}")
+            L.append(f"- 기준: {origin(it)}")
             L.append(f"- `{r.get('file')}:{r.get('line')}`")
             L.append(f"- {r.get('reason','')}")
             if r.get("fix"):
@@ -492,7 +502,8 @@ def render(ctx):
         L.append("<details><summary>기존 부채 " + str(len(ctx["existing"])) + "건</summary>")
         L.append("")
         for r in ctx["existing"]:
-            L.append(f"- `{r['id']}` {ctx['active'][r['id']]['title']}  `{r.get('file') or '-'}`")
+            it = ctx["active"][r["id"]]
+            L.append(f"- `{r['id']}` {it['title']}  `{r.get('file') or '-'}`  ({origin(it)})")
         L.append("")
         L.append("</details>")
         L.append("")
@@ -501,7 +512,7 @@ def render(ctx):
         L.append("<details><summary>확정값 모순으로 유보 " + str(len(ctx["conflicting"])) + "건</summary>")
         L.append("")
         for r in ctx["conflicting"]:
-            L.append(f"- `{r['id']}` {r.get('reason','')}")
+            L.append(f"- `{r['id']}` {r.get('reason','')}  ({origin(ctx['active'][r['id']])})")
         L.append("")
         L.append("</details>")
         L.append("")
@@ -514,7 +525,7 @@ def render(ctx):
         L.append("")
         for r in ctx["insufficient"]:
             it = ctx["active"][r["id"]]
-            L.append(f"- `{r['id']}` {it['title']}")
+            L.append(f"- `{r['id']}` {it['title']}  ({origin(it)})")
             if r.get("reason"):
                 L.append(f"  - {r['reason']}")
         L.append("")
