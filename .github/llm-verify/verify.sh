@@ -124,7 +124,7 @@ SCOPE=$(python3 "$COMMON/.github/llm-verify/run.py" --mode match \
 # --- 3. 판정 지시문 -----------------------------------------------------
 # 절차 본문은 담지 않는다. 문서를 가리키기만 해서 절차가 한 곳에만 있게 한다.
 PROMPT=$(cat <<EOF
-$TARGET/docs/verification/g-local.md 의 절차대로 G-LOCAL 판정을 수행하라.
+$COMMON/docs/verification/g-local.md 의 절차대로 G-LOCAL 판정을 수행하라.
 
 판정 대상   $TARGET
 범위        $BASE_SHA..$HEAD_SHA  (커밋 ${N}개)
