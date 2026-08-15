@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 #
-# G-LOCAL. 판정 대상 저장소의 변경분에 어떤 점검 항목이 걸리는지 계산한다.
+# G-LOCAL 본체. 판정 범위를 계산하고 판정 지시문을 만든다.
 #
-# LLM 을 부르지 않는다. 판정은 이 출력을 받은 Claude 가 한다.
-# Gemini 는 CI 의 G-PR 에서만 돈다. 무료 티어 한도를 로컬이 나눠 쓰면
+# LLM API 를 부르지 않는다. 판정은 지시문을 받은 CLI 에이전트가 한다.
+# Gemini API 는 CI 의 G-PR 에서만 돈다. 무료 티어 한도를 로컬이 나눠 쓰면
 # 작업 중 반복 실행하는 것만으로 CI 가 밀린다.
 #
-#   ./verify.sh                     마지막 커밋 하나
-#   ./verify.sh HEAD~5              지정한 지점부터 HEAD 까지
-#   ./verify.sh <base> <head>       범위를 직접 준다
-#   ./verify.sh --target ../fm-infra   판정 대상을 바꾼다 (기본은 현재 디렉터리)
+#   verify.sh                      계산하고 지시문을 낸다. 붙여넣어 쓴다
+#   verify.sh --agent claude       지시문을 그 명령에 넘긴다
+#   verify.sh --agent "gemini -p"  임의의 CLI 에 넘긴다
+#   verify.sh HEAD~5               범위를 지정한다
+#   verify.sh --target ../fm-infra 판정 대상을 바꾼다 (기본은 현재 디렉터리)
 #
 # 차단하지 않는다. 작업 중 반복 실행하는 도구이므로 중간 상태에서 위반이 나오는 것이 정상이다.
 
@@ -17,11 +18,13 @@ set -u
 
 # --- 인자 ---------------------------------------------------------------
 TARGET=$PWD
+AGENT=""
 ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --target) TARGET=$2; shift 2 ;;
-        -h|--help) sed -n '3,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --agent)  AGENT=$2;  shift 2 ;;
+        -h|--help) sed -n '3,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) ARGS+=("$1"); shift ;;
     esac
 done
@@ -56,34 +59,59 @@ for d in "$TARGET" "$COMMON" "$INFRA"; do
     fi
 done
 
+BASE_SHA=$(cd "$TARGET" && git rev-parse "$BASE")
+HEAD_SHA=$(cd "$TARGET" && git rev-parse "$HEAD_REF")
+
 echo "판정 대상 $TARGET"
 echo "기준      common=$COMMON"
 echo "          infra=$INFRA"
-echo "범위      $BASE..$HEAD_REF"
+echo "범위      $BASE_SHA..$HEAD_SHA"
 echo
 
 # --- 1. 빌드 게이트 -----------------------------------------------------
 # CI 에서는 이 둘이 병합을 차단한다. 여기서는 알리기만 한다.
 #   *.domain.service.* 메서드 커버리지 100%
 #   정적 분석 신규 Blocker 0건
+BUILD_RESULT="건너뜀 (gradlew 없음)"
 if [ -x "$TARGET/gradlew" ]; then
-    echo "== 빌드 게이트"
     if (cd "$TARGET" && ./gradlew check --no-daemon -q); then
-        echo "통과"
+        BUILD_RESULT="통과"
     else
-        echo "미달. CI 에서는 여기서 병합이 막힌다"
+        BUILD_RESULT="미달. CI 에서는 여기서 병합이 막힌다"
     fi
-    echo
 fi
+echo "== 빌드 게이트"
+echo "$BUILD_RESULT"
+echo
 
-# --- 2. 대상 항목 계산 ------------------------------------------------
+# --- 2. 대상 항목 계산 --------------------------------------------------
 # run.py --mode match 는 앵커 규칙만 돌린다. 네트워크도 API 키도 쓰지 않는다.
 # --mode judge 는 Gemini 를 부르므로 여기서 쓰지 않는다.
-echo "== 대상 항목"
-python3 "$COMMON/.github/llm-verify/run.py" --mode match \
+SCOPE=$(python3 "$COMMON/.github/llm-verify/run.py" --mode match \
     --backend "$TARGET" --common "$COMMON" --infra "$INFRA" \
-    --base "$(cd "$TARGET" && git rev-parse "$BASE")" \
-    --head "$(cd "$TARGET" && git rev-parse "$HEAD_REF")"
+    --base "$BASE_SHA" --head "$HEAD_SHA")
 
-echo
-echo "판정은 이 출력을 받은 Claude 가 한다. 이 스크립트는 LLM 을 부르지 않는다."
+# --- 3. 판정 지시문 -----------------------------------------------------
+# 절차 본문은 담지 않는다. 문서를 가리키기만 해서 절차가 한 곳에만 있게 한다.
+PROMPT=$(cat <<EOF
+$TARGET/docs/verification/g-local.md 의 절차대로 G-LOCAL 판정을 수행하라.
+
+판정 대상   $TARGET
+범위        $BASE_SHA..$HEAD_SHA
+기준        common=$COMMON
+            infra=$INFRA
+계산 결과   $SCOPE
+빌드 게이트  $BUILD_RESULT
+
+계산(1장)은 끝났다. 2장부터 진행하라.
+EOF
+)
+
+if [ -n "$AGENT" ]; then
+    printf '%s\n' "$PROMPT" | $AGENT
+else
+    echo "== 판정 지시문"
+    printf '%s\n' "$PROMPT"
+    echo
+    echo "쓰는 CLI 에이전트에 넘기면 된다. --agent <명령> 으로 바로 넘길 수도 있다."
+fi
