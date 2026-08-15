@@ -11,7 +11,7 @@
 #   verify.sh HEAD~1               그 앞 커밋 하나. git 이 읽는 그대로다
 #   verify.sh <SHA>                그 커밋 하나
 #   verify.sh -n 5                 최신 5개
-#   verify.sh --full               common, infra 항목까지 판정한다 (기본은 backend 만)
+#   verify.sh --full               다른 저장소 항목까지 판정한다 (기본은 자기 것만)
 #   verify.sh <base> <head>        두 개를 주면 그 구간을 그대로 쓴다
 #   verify.sh --agent claude       지시문을 그 명령에 넘긴다
 #   verify.sh --agent "gemini -p"  임의의 CLI 에 넘긴다
@@ -142,13 +142,14 @@ SCOPE=$(python3 "$COMMON/.github/llm-verify/run.py" --mode match \
     --base "$BASE_SHA" --head "$HEAD_SHA")
 
 # --- 3. 판정 범위 -------------------------------------------------------
-# 기본은 1단계(backend)만 본다. 전부 보면 기준 문서 12개에 확정값까지 읽어야 해서
+# 기본은 이 저장소 자신의 항목만 본다. 전부 보면 기준 문서 12개에 확정값까지 읽어야 해서
 # 판정 한 번에 20만 토큰이 넘어가고, 작업 중 반복 실행하는 도구로 쓸 수 없다.
-# 2단계(common, infra)는 --full 로 연다.
+# 다른 저장소 항목은 --full 로 연다.
+SOURCE=$(sed -n 's/^source: *//p' "$TARGET/.github/llm-verify/items.yml" | head -1)
 if [ "$FULL" = "1" ]; then
-    STAGE_NOTE="전부. 1단계와 2단계 모두"
+    STAGE_NOTE="전부. 이 저장소 항목과 다른 저장소 항목 모두"
 else
-    STAGE_NOTE="1단계만 (backend). common 과 infra 항목은 판정하지 않는다. 전부 보려면 --full"
+    STAGE_NOTE="$SOURCE 항목만. 다른 저장소 항목은 판정하지 않는다. 전부 보려면 --full"
 fi
 
 # --- 4. 판정 지시문 -----------------------------------------------------

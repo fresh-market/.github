@@ -61,7 +61,11 @@ VERDICTS = ["VIOLATION", "OK", "NOT_APPLICABLE", "INSUFFICIENT_EVIDENCE", "CONFL
 # --- 유틸 ---------------------------------------------------------------
 
 def git(cwd, *args):
-    r = subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, text=True)
+    # core.quotepath 를 끈다. 기본값이 켜짐이라 비ASCII 경로를 따옴표로 감싸고
+    # 바이트를 \353 같은 8진수로 바꿔 내놓는다. 그러면 앵커 글롭이 하나도 안 맞아
+    # 한글 이름 문서를 바꾼 커밋이 "변경 없음" 으로 계산된다.
+    r = subprocess.run(["git", "-C", str(cwd), "-c", "core.quotepath=false", *args],
+                       capture_output=True, text=True)
     if r.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} 실패: {r.stderr.strip()}")
     return r.stdout
@@ -633,19 +637,33 @@ def main():
         # 확정값 문서는 29만 자라 판정 입력에서 가장 크다. 규칙이 걸렸다는 이유만으로
         # 통째로 읽으면 그것만으로 컨텍스트가 찬다. 값을 대조하는 항목은 REL 과 INF 뿐이므로
         # 그것이 실제로 활성일 때만 읽으라고 알려준다.
-        registries = {r: items_of(Path(p) / ".github/llm-verify/items.yml")
-                      for r, p in (("backend", args.backend), ("common", args.common),
-                                   ("infra", args.infra))}
+        # 레지스트리를 역할 이름이 아니라 items.yml 의 source 로 라벨한다.
+        # --backend 는 "판정 대상" 이라는 뜻이라 infra 를 대상으로 돌리면 그 자리에 infra 가 온다.
+        # 역할 이름으로 라벨하면 infra 항목이 backend 로 찍혀 자기 항목을 0건으로 센다.
+        # source 로 라벨하면 같은 저장소가 두 자리에 와도 하나로 합쳐진다.
+        registries = {}
+        for path in (args.backend, args.common, args.infra):
+            f = Path(path) / ".github/llm-verify/items.yml"
+            if not f.is_file():
+                continue
+            d = load_yaml(f)
+            registries.setdefault(d.get("source") or str(path),
+                                  d["items"] if isinstance(d, dict) else d)
         active = active_items(rules, registries)
         baseline_ids = sorted(i for i in active
                               if i.startswith("REL-") or i.startswith("INF-"))
-        s1 = [i for i, it in active.items() if it.get("ci_stage", 1) == 1]
+        # 로컬의 기본 판정 범위는 "이 저장소 자신의 항목" 이다.
+        # ci_stage 로 가르면 backend 기준이라 infra 에서 돌릴 때 1단계가 0건이 된다.
+        # 대상 저장소가 items.yml 의 source 로 자신을 밝히므로 그것과 맞춰 가른다.
+        own = load_yaml(Path(args.backend) / ".github/llm-verify/items.yml").get("source")
+        mine = [i for i, it in active.items() if it["repo"] == own]
         payload = {
             "needs_baseline": "true" if needs_baseline and baseline_ids else "false",
             "baseline_items": str(len(baseline_ids)),
             "active": str(len(active)),
-            "stage1": str(len(s1)),
-            "stage2": str(len(active) - len(s1)),
+            "source": own or "?",
+            "own": str(len(mine)),
+            "other": str(len(active) - len(mine)),
             "rules": ",".join(r["id"] for r in rules),
             "changed": str(len(files)),
         }
