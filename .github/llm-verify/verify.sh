@@ -137,9 +137,12 @@ echo
 # --- 2. 대상 항목 계산 --------------------------------------------------
 # run.py --mode match 는 앵커 규칙만 돌린다. 네트워크도 API 키도 쓰지 않는다.
 # --mode judge 는 Gemini 를 부르므로 여기서 쓰지 않는다.
+# 활성 항목 목록을 파일로 받는다. 이것이 없으면 판정하는 쪽이 items.yml 세 개를
+# 합계 17만 자 읽어 직접 걸러야 한다. 실제로 필요한 것은 7천 자 안팎이다.
+ITEMS=$(mktemp -d -t verify)/items.md
 SCOPE=$(python3 "$COMMON/.github/llm-verify/run.py" --mode match \
     --backend "$TARGET" --common "$COMMON" --infra "$INFRA" \
-    --base "$BASE_SHA" --head "$HEAD_SHA")
+    --base "$BASE_SHA" --head "$HEAD_SHA" --items-out "$ITEMS")
 
 # --- 3. 판정 범위 -------------------------------------------------------
 # 기본은 이 저장소 자신의 항목만 본다. 전부 보면 기준 문서 12개에 확정값까지 읽어야 해서
@@ -164,6 +167,8 @@ $COMMON/docs/verification/g-local.md 의 절차대로 G-LOCAL 판정을 수행�
 계산 결과   $SCOPE
 빌드 게이트  $BUILD_RESULT
 판정 범위   $STAGE_NOTE
+활성 항목   $ITEMS
+            이 파일에 판정할 항목과 기준이 들어 있다. items.yml 을 따로 읽지 않는다.
 
 계산(1장)은 끝났다. 2장부터 진행하라.
 EOF

@@ -34,8 +34,8 @@ items:
   - {id: DI-3-02, doc: qa-data-integrity.md, ch: 3, level: 설계, gate: G-DESIGN, gates: [local, ci], ci_stage: 2, domains: [database], title: "값 범위 규칙이 CHECK 제약으로도 표현되어 있는가"}
   - {id: DI-3-03, doc: qa-data-integrity.md, ch: 3, level: 설계, gate: G-DESIGN, gates: [local, ci], ci_stage: 2, domains: [database], title: "참조 무결성이 필요한 곳에 외래 키가 있는가"}
   - {id: DI-3-04, doc: qa-data-integrity.md, ch: 3, level: 설계, gate: G-DESIGN, gates: [local, ci], ci_stage: 2, domains: [database], title: "NOT NULL이 필요한 컬럼에 지정되어 있는가"}
-  - {id: DI-3-05, doc: qa-data-integrity.md, ch: 3, level: 코드, gate: G-PR, gates: [local, ci], ci_stage: 2, domains: [database], title: "두 외래 키가 같은 조상을 가리켜야 한다면 그 조합을 검증하는가"}
-  - {id: DI-3-06, doc: qa-data-integrity.md, ch: 3, level: 코드, gate: G-PR, gates: [local, ci], ci_stage: 2, domains: [database], title: "자식 행 합계가 부모의 상한을 넘지 않도록 잠그고 검사하는가"}
+  - {id: DI-3-05, doc: qa-data-integrity.md, ch: 3, level: 코드, gate: G-PR, gates: [local, ci], ci_stage: 2, domains: [database], title: "두 외래 키가 같은 조상을 가리켜야 한다면 그 조합을 검증하는가", criteria: "참조가 둘 이상이면 각각의 외래 키가 유효해도 조합이 틀릴 수 있다. 리뷰가 A 상품을 가리키는데 그 근거인 주문 상품은 B 상품인 경우가 그렇고, 두 외래 키는 모두 통과한다. 한 테이블 안의 값이 아니라 조상까지 올라가 비교해야 하는 조건이라 CHECK로 표현할 수 없다. 요청 경로에 있는 식별자로 조상을 다시 조회해 대조하고, 어긋나면 거부한다."}
+  - {id: DI-3-06, doc: qa-data-integrity.md, ch: 3, level: 코드, gate: G-PR, gates: [local, ci], ci_stage: 2, domains: [database], title: "자식 행 합계가 부모의 상한을 넘지 않도록 잠그고 검사하는가", criteria: "행 하나씩은 유효한데 합계가 넘는 경우다. 3개 주문한 것을 2개짜리 반품 두 건으로 나누면 각 행은 정상이다. 읽고 더한 뒤 쓰는 사이에 다른 트랜잭션이 끼면 `DI-2-01`(갱신 손실)과 같은 형태가 되므로 잠금이 함께 필요하다. 부모에 소진 카운터를 두면 조건부 UPDATE 한 번으로 끝나고, 없으면 부모 행을 잠그고 합계를 다시 센다."}
   - {id: DI-4-01, doc: qa-data-integrity.md, ch: 4, level: 코드, gate: G-PR, gates: [local, ci], ci_stage: 2, domains: [database], title: "트랜잭션 범위가 비즈니스 단위와 일치하는가"}
   - {id: DI-4-02, doc: qa-data-integrity.md, ch: 4, level: 코드, gate: G-PR, gates: [local, ci], ci_stage: 2, domains: [database], title: "트랜잭션 안에서 외부 API를 호출하지 않는가"}
   - {id: DI-4-03, doc: qa-data-integrity.md, ch: 4, level: 코드, gate: G-PR, gates: [local, ci], ci_stage: 2, domains: [database], defers_to: [INF-1-07], title: "트랜잭션이 필요 이상으로 길지 않은가"}

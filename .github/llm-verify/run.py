@@ -633,6 +633,9 @@ def main():
     ap.add_argument("--base", required=True)
     ap.add_argument("--head", required=True)
     ap.add_argument("--out", default="verify-out.md")
+    # match 전용. 활성 항목 목록을 여기 쓴다. 주지 않으면 쓰지 않는다.
+    # --out 과 나누는 이유는 CI 가 --out 을 판정 코멘트에 쓰기 때문이다.
+    ap.add_argument("--items-out", default="")
     ap.add_argument("--dry-run", action="store_true",
                     help="LLM 을 부르지 않고 무엇이 활성화되어 어떤 입력이 만들어지는지만 본다")
     args = ap.parse_args()
@@ -653,6 +656,9 @@ def main():
         # source 로 라벨하면 같은 저장소가 두 자리에 와도 하나로 합쳐진다.
         registries = {}
         for path in (args.backend, args.common, args.infra):
+            # CI 의 match 단계는 --backend 만 준다. 없는 경로는 건너뛴다.
+            if not path:
+                continue
             f = Path(path) / ".github/llm-verify/items.yml"
             if not f.is_file():
                 continue
@@ -682,6 +688,26 @@ def main():
                 for k, v in payload.items():
                     f.write(f"{k}={v}\n")
         print(json.dumps(payload, ensure_ascii=False))
+
+        # 활성 항목 목록을 파일로 낸다.
+        # 이것이 없으면 판정하는 쪽이 items.yml 세 개(합계 17만 자)를 읽어 직접 걸러야 한다.
+        # 실제로 필요한 것은 활성 항목뿐이고 그것은 7천 자 안팎이다.
+        if args.items_out:
+            L = [f"# 활성 점검 항목 {len(active)}건",
+                 f"# 대상 {own}  범위 {args.base[:7]}..{args.head[:7]}",
+                 f"# 규칙 {', '.join(r['id'] for r in rules)}", ""]
+            for repo in sorted({it["repo"] for it in active.values()}):
+                sel = {i: it for i, it in active.items() if it["repo"] == repo}
+                L.append(f"## {repo} {len(sel)}건" + ("  (기본 판정 범위)" if repo == own else "  (--full 일 때만)"))
+                for doc in sorted({it["doc"] for it in sel.values()}):
+                    L.append(f"\n### {doc}")
+                    for i in sorted(k for k, v in sel.items() if v["doc"] == doc):
+                        it = sel[i]
+                        L.append(f"- `{i}` ({it['ch']}장) {it['title']}")
+                        if it.get("criteria"):
+                            L.append(f"  - {it['criteria']}")
+                L.append("")
+            Path(args.items_out).write_text("\n".join(L) + "\n", encoding="utf-8")
         return 0
 
     roots = {"backend": args.backend, "common": args.common, "infra": args.infra}

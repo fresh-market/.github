@@ -118,9 +118,16 @@ ITEM = re.compile(
 
 
 def parse(path, default_level):
-    """`점검 항목` 블록에서 항목을 뽑는다."""
+    """
+    `점검 항목` 블록에서 항목을 뽑는다.
+
+    항목 줄 아래의 들여쓴 줄은 그 항목의 판정 기준이다. 함께 담는다.
+    담지 않으면 판정할 때마다 가이드 문서 전체를 실어야 하는데,
+    그중 판정에 쓰이는 것은 이 줄들뿐이고 나머지 75% 는 배경 서술과 예시다.
+    """
     items, inside = [], False
-    for line in path.read_text(encoding="utf-8").splitlines():
+    lines = path.read_text(encoding="utf-8").splitlines()
+    for n, line in enumerate(lines):
         if line.strip() == "점검 항목":
             inside = True
             continue
@@ -133,6 +140,11 @@ def parse(path, default_level):
         m = ITEM.match(line)
         if not m:
             continue
+        criteria = []
+        for follow in lines[n + 1:]:
+            if not follow.startswith("  ") or not follow.strip():
+                break
+            criteria.append(follow.strip())
         level = m.group("level") or LEVEL_BY_DOC.get(path.name) or default_level
         if not level:
             sys.exit(f"층위를 알 수 없다: {path.name} {m.group('id')}")
@@ -144,6 +156,7 @@ def parse(path, default_level):
             "ch": int(m.group("id").split("-")[-2]),
             "level": level,
             "title": m.group("title"),
+            "criteria": " ".join(criteria),
         })
     return items
 
@@ -204,6 +217,8 @@ def build(root, pattern, source, default_level):
         if it["id"] in DEFERS:
             f.append(f"defers_to: [{', '.join(DEFERS[it['id']])}]")
         f.append(f"title: {quote(it['title'])}")
+        if it["criteria"]:
+            f.append(f"criteria: {quote(it['criteria'])}")
         out.append("  - {" + ", ".join(f) + "}")
 
     return "\n".join(out) + "\n", len(items)
