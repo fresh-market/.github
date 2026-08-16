@@ -305,16 +305,19 @@ def tables_of(java_texts):
 
 def collect_docs(active, roots):
     """활성 항목이 속한 판정 기준 문서만 읽는다."""
-    doc_dirs = {
-        "common": Path(roots["common"]) / "docs" / "software-quality",
-        "backend": Path(roots["backend"]) / "docs" / "code-architecture",
-        "infra": Path(roots["infra"] or ".") / "docs" / "infra-review",
-    }
+    # roots 는 source 로 라벨된다. 판정 대상에 따라 없는 키가 있을 수 있다.
+    sub = {"common": "docs/software-quality",
+           "backend": "docs/code-architecture",
+           "infra": "docs/infra-review"}
+    doc_dirs = {k: Path(roots[k]) / sub[k] for k in sub if roots.get(k)}
     wanted = defaultdict(set)
     for it in active.values():
         wanted[it["repo"]].add(it["doc"])
     docs, missing = {}, []
     for repo, names in wanted.items():
+        if repo not in doc_dirs:
+            missing += [f"{repo}/{n}" for n in sorted(names)]
+            continue
         for name in sorted(names):
             path = doc_dirs[repo] / name
             if path.is_file():
@@ -820,21 +823,34 @@ def main():
             Path(args.items_out).write_text("\n".join(L) + "\n", encoding="utf-8")
         return 0
 
-    roots = {"backend": args.backend, "common": args.common, "infra": args.infra}
-    registries = {
-        "backend": items_of(Path(args.backend) / ".github/llm-verify/items.yml"),
-        "common": items_of(Path(args.common) / ".github/llm-verify/items.yml"),
-    }
-    if args.infra:
-        registries["infra"] = items_of(Path(args.infra) / ".github/llm-verify/items.yml")
+    # 레지스트리와 문서 경로를 역할 이름이 아니라 items.yml 의 source 로 라벨한다.
+    # --backend 는 "판정 대상" 이라는 뜻이라 infra 를 대상으로 돌리면 그 자리에 infra 가 온다.
+    # 역할 이름으로 라벨하면 infra 항목이 backend 로 찍혀 자기 항목을 못 찾는다.
+    roots, registries = {}, {}
+    for path in (args.backend, args.common, args.infra):
+        if not path:
+            continue
+        f = Path(path) / ".github/llm-verify/items.yml"
+        if not f.is_file():
+            continue
+        d = load_yaml(f)
+        src = d.get("source") or str(path)
+        roots.setdefault(src, path)
+        registries.setdefault(src, d["items"] if isinstance(d, dict) else d)
 
     active = active_items(rules, registries)
 
-    # CI 가 보지 않는 단계의 항목은 활성에서 뺀다.
-    # 남겨 두면 판정하지 않은 것이 UNJUDGED 로 쌓여, 담당이 아니어서 안 본 것과
-    # 물었는데 답이 안 온 것이 뒤섞인다. 그 둘은 조치가 다르다.
-    deferred_to_local = {i: it for i, it in active.items()
-                         if it.get("ci_stage", 1) not in CI_STAGES}
+    # CI 는 판정 대상 저장소 자신의 항목만 본다. 나머지는 G-LOCAL 이 --full 로 맡는다.
+    #
+    # ci_stage 로 가르지 않는 이유는 그 값이 backend 를 전제로 매겨져 있어서다.
+    # infra 항목은 전부 2단계라, infra 를 판정 대상으로 돌리면 자기 항목이 0건이 된다.
+    # 대상 저장소가 items.yml 의 source 로 자신을 밝히므로 그것과 맞춰 가른다.
+    # backend 를 대상으로 할 때는 결과가 ci_stage 1 과 같다.
+    #
+    # 활성에서 아예 빼는 이유는, 남겨 두면 판정하지 않은 것이 UNJUDGED 로 쌓여
+    # 담당이 아니어서 안 본 것과 물었는데 답이 안 온 것이 뒤섞이기 때문이다.
+    own_source = load_yaml(Path(args.backend) / ".github/llm-verify/items.yml").get("source")
+    deferred_to_local = {i: it for i, it in active.items() if it["repo"] != own_source}
     active = {i: it for i, it in active.items() if i not in deferred_to_local}
 
     if not active:
