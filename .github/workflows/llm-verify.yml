@@ -127,10 +127,17 @@ jobs:
 
       # --- 16단계: 출력 ---
       #
-      # push 마다 새 코멘트를 단다. 갱신(PATCH)으로 두면 타임라인 위치가 안 움직여서
-      # 판정이 새로 나와도 대화에 아무 항목이 안 생기고 알림도 가지 않는다.
-      # 판정이 갱신된 것을 아무도 모르는 것이 코멘트가 쌓이는 것보다 나쁘다.
-      # 어느 커밋에 대한 판정인지는 본문 머리에 적힌다.
+      # 옛 판정 코멘트를 지우고 새로 단다.
+      #
+      # 갱신(PATCH)으로 두면 타임라인 위치가 안 움직여서, 판정이 새로 나와도 대화에
+      # 아무 항목이 안 생기고 알림도 가지 않는다. 실제로 그것 때문에 갱신된 판정을
+      # 몇 시간 전 것으로 오해하는 일이 있었다.
+      #
+      # 그렇다고 계속 쌓으면 옛 판정이 위에 남는다. GitHub 은 대화 탭 코멘트를
+      # 항상 오래된 것부터 보여 주고 최신순 정렬을 제공하지 않는다.
+      # 그래서 지우고 다시 단다. 항상 하나만 남고 그것이 맨 아래에 온다.
+      #
+      # 지난 판정 이력은 Actions 실행 기록과 Job Summary 에 남으므로 여기서 잃지 않는다.
       - name: 리뷰 코멘트
         if: always() && hashFiles('verify-out.md') != ''
         env:
@@ -138,6 +145,11 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
+          for ID in $(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+                        --jq '.[] | select(.body | startswith("<!-- llm-verify -->")) | .id'); do
+            gh api --method DELETE "repos/$REPO/issues/comments/$ID" >/dev/null
+            echo "옛 코멘트 삭제 $ID"
+          done
           gh api --method POST "repos/$REPO/issues/$PR/comments" \
             -F body=@verify-out.md >/dev/null
           echo "코멘트 생성"
