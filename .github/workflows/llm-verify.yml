@@ -14,6 +14,16 @@ on:
       common_repo:
         type: string
         default: fresh-market/.github
+      # 판정 도구를 브랜치 판본으로 돌려보기 위한 것이다.
+      #
+      # 아래 "도구만 최신으로 둔다" 단계가 common 의 기본 브랜치에서 run.py 를 가져오므로,
+      # uses 만 브랜치로 바꿔도 워크플로만 그쪽에서 오고 도구는 main 것이 온다.
+      # 그러면 엔진을 바꾸는 변경은 main 에 넣기 전에 실제 호출로 확인할 방법이 없다.
+      # 브랜치 이름을 주면 그 판본으로 한 번 돌려보고 판단할 수 있다.
+      # 비워 두면 기본 브랜치를 쓴다. 상시 운영에서는 비워 둔다.
+      common_ref:
+        type: string
+        default: ""
       infra_repo:
         type: string
         default: fresh-market/fm-infra
@@ -58,6 +68,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ inputs.common_repo }}
+          ref: ${{ inputs.common_ref }}
           path: common
           fetch-depth: 0
 
