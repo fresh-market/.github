@@ -53,6 +53,20 @@ jobs:
             https://auth.openai.com/api/accounts/oauth/token \
             -H 'Content-Type: application/json' -d "$BODY")
 
+          # 응답의 키와 토큰 형태만 남긴다. 값은 남기지 않는다.
+          #
+          # codex login --with-access-token 이 받은 토큰을 JWT 로 파싱하는데,
+          # 이 요청이 돌려준 것이 그 형태가 아니면 "agent identity JWT payload is not valid JSON"
+          # 으로 거절된다. 무엇을 받았는지 모르면 그 원인을 짚을 수 없다.
+          echo "응답 키: $(printf '%s' "$RESP" | jq -rc 'keys')"
+          for k in access_token id_token refresh_token; do
+            V=$(printf '%s' "$RESP" | jq -r --arg k "$k" '.[$k] // empty')
+            if [ -n "$V" ]; then
+              DOTS=$(printf '%s' "$V" | tr -cd '.' | wc -c | tr -d ' ')
+              echo "  $k: ${#V}자, 점 ${DOTS}개$([ "$DOTS" = "2" ] && echo ' (JWT 형태)')"
+            fi
+          done
+
           ACCESS=$(printf '%s' "$RESP" | jq -r '.access_token // empty')
           NEW_REFRESH=$(printf '%s' "$RESP" | jq -r '.refresh_token // empty')
 
@@ -73,6 +87,35 @@ jobs:
             echo "새 액세스 토큰 만료: $(date -u -d "@$EXP" '+%Y-%m-%d %H:%M UTC')"
           fi
 
+          ID_TOKEN=$(printf '%s' "$RESP" | jq -r '.id_token // empty')
+
+          # CLI 가 스스로 쓰는 auth.json 을 그대로 조립한다.
+          #
+          # codex login --with-access-token 에 OAuth 액세스 토큰을 넣으면
+          # "agent identity JWT payload is not valid JSON" 으로 거절된다.
+          # 그 플래그가 무엇을 기대하는지 맞히는 대신 CLI 가 읽는 파일 형식을 직접 만든다.
+          #
+          # refresh_token 은 비운다. 넣으면 판정 잡이 스스로 갱신하다가 토큰을 회전시키는데,
+          # 러너는 일회성이라 그 새 토큰이 사라져 다음 실행이 끊긴다. 회전은 이 잡만 한다.
+          # 액세스 토큰 수명이 10일이고 이 잡이 4일마다 도므로 판정 잡이 갱신할 일이 없다.
+          PAYLOAD=$(printf '%s' "$ACCESS" | cut -d. -f2 | tr '_-' '/+')
+          case $(( ${#PAYLOAD} % 4 )) in
+            2) PAYLOAD="$PAYLOAD==" ;;
+            3) PAYLOAD="$PAYLOAD=" ;;
+          esac
+          ACCOUNT=$(printf '%s' "$PAYLOAD" | base64 -d 2>/dev/null \
+                    | jq -r '."https://api.openai.com/auth".chatgpt_account_id // empty')
+          if [ -z "$ACCOUNT" ]; then
+            echo "::error::액세스 토큰에서 chatgpt_account_id 를 찾지 못했다"
+            exit 1
+          fi
+
+          AUTH=$(jq -n --arg id "$ID_TOKEN" --arg at "$ACCESS" --arg acct "$ACCOUNT" \
+            '{auth_mode:"chatgpt", OPENAI_API_KEY:null,
+              tokens:{id_token:$id, access_token:$at, refresh_token:"", account_id:$acct},
+              last_refresh:(now|todate)}')
+          echo "::add-mask::$AUTH"
+
           # 리프레시 토큰을 먼저 쓴다. 순서가 중요하다.
           #
           # 갱신 요청이 성공한 시점에 옛 리프레시 토큰은 이미 소모됐다.
@@ -82,6 +125,9 @@ jobs:
             gh secret set CODEX_REFRESH_TOKEN --repo "$REPO" --body "$NEW_REFRESH"
             echo "CODEX_REFRESH_TOKEN 회전"
           fi
+
+          gh secret set CODEX_AUTH_JSON --repo "$REPO" --body "$AUTH"
+          echo "CODEX_AUTH_JSON 갱신 (account_id ${ACCOUNT:0:8}...)"
 
           gh secret set CODEX_ACCESS_TOKEN --repo "$REPO" --body "$ACCESS"
           echo "CODEX_ACCESS_TOKEN 갱신"
