@@ -6,7 +6,7 @@ fresh-market/fm-backend 의 docs/verification/verification-workflow.md "진입�
 워크플로 yml 은 체크아웃과 코멘트만 하고, 판정 파이프라인은 전부 여기 있다.
 
 두 모드로 나뉜다.
-  match  앵커 규칙만 매칭해 needs_baseline 을 내놓는다. infra 체크아웃 여부를 정하기 위해서다
+  match  앵커 규칙만 매칭해 활성 항목을 계산한다. 판정 범위와 체크아웃을 정하기 위해서다
   judge  4~16 단계 전체
 
 설계 문서와 다른 점이 하나 있다.
@@ -21,43 +21,49 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
-import urllib.error
-import urllib.request
 from collections import defaultdict
 from pathlib import Path
 
 import yaml
 
-MODEL = "gemini-2.5-flash"
-ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent"
+# 판정 엔진은 Codex CLI 를 비대화 모드로 부른다.
+#
+# HTTP 를 직접 치지 않고 CLI 를 거치는 이유는 인증과 모델 접근을 CLI 가 맡기 때문이다.
+# 러너는 `codex login --with-api-key` 로 한 번 로그인해 두고, 여기서는 그것을 쓴다.
+# 프롬프트는 stdin 으로 넣고 답은 --output-schema 로 모양을 고정해 -o 파일로 받는다.
+CODEX_BIN = os.environ.get("CODEX_BIN", "codex")
 
-# 사고 토큰이 maxOutputTokens 예산에서 나간다.
-# 묶지 않으면 동적으로 배정되는데, 11만 토큰짜리 프롬프트로 200건을 판정하는 동안
-# 예산을 다 써서 정작 답을 쓸 자리가 남지 않고 finishReason=MAX_TOKENS 로 끝난다.
-# 그러면 항목 전부가 UNJUDGED 가 되므로 게이트가 없는 것과 같다.
-# 8192 를 남기면 출력에 57344 가 남아 300건대를 쓰기에 넉넉하다.
-THINKING_BUDGET = 8192
+# 모델을 비워 두면 Codex 의 기본값을 쓴다.
+#
+# 기본값을 코드에 박지 않는 이유는 모델 이름이 자주 바뀌고, 틀린 이름을 박아 두면
+# 판정이 통째로 실패하기 때문이다. 고정하려면 워크플로에서 CODEX_MODEL 을 준다.
+CODEX_MODEL = os.environ.get("CODEX_MODEL", "")
+
+# 호출 하나의 시간 상한. 에이전트가 여러 턴을 돌 수 있어 HTTP 때보다 넉넉히 준다.
+CALL_TIMEOUT_SEC = 900
 
 # CI 가 판정하는 단계. 1단계가 backend, 2단계가 common + infra 다.
 #
-# CI 는 1단계만 본다. 2단계는 G-LOCAL 이 맡는다.
-# 2단계를 넣으면 호출이 배로 늘어 무료 티어 분당 10회를 한 PR 이 다 쓰고,
-# 정작 판정 대상 코드는 backend 뿐이라 얻는 것에 비해 비용이 크다.
-# 되돌리려면 (1, 2) 로 바꾸면 된다. 항목의 ci_stage 는 그대로 두었다.
+# CI 는 아직 1단계만 본다. 2단계는 G-LOCAL 이 --full 로 맡는다.
+# 근거였던 Gemini 무료 티어의 분당 한도는 엔진을 바꾸면서 사라졌으므로,
+# 이 값은 (1, 2) 로 여는 것을 전제로 남겨 둔다. 항목의 ci_stage 는 그대로다.
 CI_STAGES = (1,)
 
-# 한 호출에 넣는 항목 수.
+# 한 호출에 넣는 항목 수. 단계당 한 번에 끝나도록 크게 잡는다.
 #
-# 나눠 부르면 호출당 출력이 줄어 MAX_TOKENS 를 넘길 일이 없고, 한 덩어리가 실패해도
-# 나머지 판정은 살아남는다. 대신 build_prompt 가 덩어리마다 기준 문서와 앵커를 다시 실어
-# 입력이 덩어리 수만큼 곱해진다. 50 으로 자르면 200건짜리 PR 에서 입력이 3.8배가 된다.
+# 나눠 부르면 한 덩어리가 실패해도 나머지 판정은 살아남는다.
+# 대신 덩어리마다 기준 문서와 앵커와 diff 를 다시 싣고, 거기에 CLI 가 얹는
+# 고정 오버헤드까지 붙는다. 항목 목록은 프롬프트의 일부일 뿐이라 이 대가가 크다.
 #
-# 사고 예산을 묶은 뒤로는 한 번에 200건도 출력이 들어갈 수 있다.
-# 들어가면 곱해지는 문제가 사라지므로 크게 잡고, MAX_TOKENS 가 나면 줄인다.
-CHUNK = 200
+# 200 으로 484건을 판정했더니 4호출로 갈려 입력이 327,019 토큰이었다.
+# 그중 2단계 두 번째 호출은 항목 9건을 묻는 데 61,200 토큰을 썼다. 항목당 6,800 이다.
+# 출력은 200건에 10,688 토큰이라 한 번에 더 담을 여유가 있었다.
+CHUNK = 500
 
 VERDICTS = ["VIOLATION", "OK", "NOT_APPLICABLE", "INSUFFICIENT_EVIDENCE", "CONFLICTING_BASELINE"]
 
@@ -153,7 +159,6 @@ def match_rules(anchors, files):
     fallback = dict(anchors["defaults"]["on_no_match"])
     fallback.setdefault("id", "on_no_match")
     fallback.setdefault("anchors", [])
-    fallback["needs_baseline_values"] = False
     return [fallback], True
 
 
@@ -327,30 +332,6 @@ def collect_docs(active, roots):
     return docs, missing
 
 
-def collect_baseline(infra_root, limit_bytes=400_000):
-    """
-    확정값 문서를 읽는다. 앵커 규칙이 needs_baseline_values 를 걸었을 때만 부른다.
-
-    이 문서들은 "왜 그 값인가" 를 담고 있어 크다(전체 165KB). 매번 넣으면 토큰이 낭비되고,
-    무엇보다 판정과 무관한 서술이 많아 LLM 의 주의를 흩뜨린다.
-    타임아웃 값이나 풀 크기를 확정값과 대조해야 하는 규칙에서만 넣는다.
-    """
-    if not infra_root:
-        return {}, ["infra 저장소가 없다"]
-    root = Path(infra_root) / "docs" / "system-design"
-    if not root.is_dir():
-        return {}, [f"{root} 가 없다"]
-    got, failed, total = {}, [], 0
-    for f in sorted(root.glob("*.md")):
-        text = f.read_text(encoding="utf-8", errors="replace")
-        if total + len(text) > limit_bytes:
-            failed.append(f"{f.name} (용량 상한 초과)")
-            continue
-        got[f.name] = text
-        total += len(text)
-    return got, failed
-
-
 def conflict_map(path):
     """
     항목 ID -> 모순 정보. 두 종류를 나눠 돌려준다.
@@ -389,27 +370,38 @@ SYSTEM = """너는 웹 백엔드 코드 리뷰어다. 주어진 점검 항목 �
    점검 항목 본문의 일반론과 다르다는 이유로 위반이라고 답하지 않는다.
 7. 앵커 파일은 diff 에 없어도 첨부된 것이다. "저장소에 존재하지 않는 경로" 목록은
    검색 실패가 아니라 부재의 확인이므로, 무언가가 없다는 판정의 근거로 그대로 쓴다.
-8. reason 과 fix 는 한국어로 각각 한 문장씩 쓴다.
+8. 해당 없는 필드는 null 로 둔다. 위반이 아니면 file, line, fix 가 null 이다.
+9. reason 과 fix 는 한국어로 각각 한 문장씩 쓴다.
    다만 항목 ID, verdict, 파일 경로, 클래스명, 메서드명, 설정 키와 값은 원문 그대로 둔다.
    번역하면 검색과 대조가 깨진다.
 """
 
+# 구조화 출력 스키마.
+#
+# 엄격 모드라 객체마다 additionalProperties 를 false 로 두고 모든 속성을 required 에 넣어야 한다.
+# 넣지 않으면 호출이 400 으로 거절된다. 실제로 그 오류로 판정이 통째로 죽은 적이 있다.
+#   Invalid schema for response_format: 'additionalProperties' is required to be supplied and to be false
+#
+# 그래서 "선택 필드" 를 required 에서 빼는 방식이 안 된다. 대신 null 을 허용해 같은 뜻을 만든다.
+# 위반이 아닌 항목은 file, line, reason, fix 를 null 로 답한다.
 SCHEMA = {
     "type": "object",
+    "additionalProperties": False,
     "properties": {
         "results": {
             "type": "array",
             "items": {
                 "type": "object",
+                "additionalProperties": False,
                 "properties": {
                     "id": {"type": "string"},
                     "verdict": {"type": "string", "enum": VERDICTS},
-                    "file": {"type": "string"},
-                    "line": {"type": "integer"},
-                    "reason": {"type": "string"},
-                    "fix": {"type": "string"},
+                    "file": {"type": ["string", "null"]},
+                    "line": {"type": ["integer", "null"]},
+                    "reason": {"type": ["string", "null"]},
+                    "fix": {"type": ["string", "null"]},
                 },
-                "required": ["id", "verdict"],
+                "required": ["id", "verdict", "file", "line", "reason", "fix"],
             },
         }
     },
@@ -418,7 +410,7 @@ SCHEMA = {
 
 
 def build_prompt(items, diff, anchor_files, absent, docs, conflicts,
-                 intentional=None, baseline=None):
+                 intentional=None):
     intentional = intentional or {}
     parts = ["# 판정할 점검 항목\n"]
     for it in items:
@@ -462,29 +454,20 @@ def build_prompt(items, diff, anchor_files, absent, docs, conflicts,
     for name, text in docs.items():
         parts.append(f"## {name}\n{text}")
 
-    if baseline:
-        parts.append(
-            "\n# 확정값\n"
-            "이 팀이 실제로 정한 값이다. 점검 항목 본문의 일반론과 어긋나면 **확정값이 이긴다.**\n"
-            "근거가 더 구체적이기 때문이다. 값을 대조하는 항목은 여기 적힌 수치를 기준으로 판정한다.\n"
-        )
-        for name, text in baseline.items():
-            parts.append(f"## {name}\n{text}")
-
     return "\n".join(parts)
 
 
-def call_gemini(api_key, prompt, expected_ids, attempts=3):
+def call_judge(prompt, expected_ids, attempts=3):
     """
     일시적 실패에 재시도한다.
 
-    무료 티어는 RPM 10 이고 503 이 드물지 않다. 재시도가 없으면 한 번의 일시 실패로
-    1단계가 죽고 464건 전부가 UNJUDGED 가 된다. 그건 게이트가 없는 것과 같다.
+    재시도가 없으면 한 번의 일시 실패로 그 단계가 죽고 항목 전부가 UNJUDGED 가 된다.
+    그건 게이트가 없는 것과 같다.
     응답이 왔는데 형식이 어긋난 경우는 재시도하지 않는다. 다시 불러도 같기 때문이다.
     """
     last = None
     for n in range(attempts):
-        result, err = _call_once(api_key, prompt, expected_ids)
+        result, err = _call_once(prompt, expected_ids)
         if result is not None:
             return result, None
         last = err
@@ -497,52 +480,141 @@ def call_gemini(api_key, prompt, expected_ids, attempts=3):
 
 
 def _retryable(err):
-    """429(한도)와 5xx(서버)만 다시 부른다. 400 이나 파싱 실패는 다시 불러도 같다."""
-    return any(s in err for s in ("HTTP 429", "HTTP 500", "HTTP 502", "HTTP 503",
-                                 "HTTP 504", "호출 실패"))
+    """
+    일시적인 것만 다시 부른다.
+
+    스키마를 못 맞췄거나 항목이 빠진 응답은 다시 불러도 같으므로 재시도하지 않는다.
+    한도 초과도 뺀다. 거부된 호출도 사용량에 잡히므로 다시 부르면 판정 없이 예산만 태운다.
+
+    종료 코드가 0이 아니라는 것만으로 다시 부르지 않는다. 스키마가 거절당한 경우가 그런데,
+    같은 요청을 다시 보내면 같은 400 이 온다. 실제로 그 오류에 재시도 세 번을 태운 적이 있다.
+    네트워크와 시간 초과처럼 다시 부를 이유가 분명한 것만 남긴다.
+    """
+    return any(s in err for s in ("시간 초과", "timed out", "connection",
+                                 "ECONNRESET", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN"))
 
 
-def _call_once(api_key, prompt, expected_ids):
-    body = {
-        "systemInstruction": {"parts": [{"text": SYSTEM}]},
-        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": 0,
-            "responseMimeType": "application/json",
-            "responseSchema": SCHEMA,
-            "maxOutputTokens": 65536,
-            "thinkingConfig": {"thinkingBudget": THINKING_BUDGET},
-        },
-    }
-    req = urllib.request.Request(
-        ENDPOINT.format(MODEL) + f"?key={api_key}",
-        data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=600) as resp:
-            data = json.load(resp)
-    except urllib.error.HTTPError as e:
-        return None, f"HTTP {e.code}: {e.read().decode()[:300]}"
-    except Exception as e:
-        return None, f"호출 실패: {e}"
+def _call_once(prompt, expected_ids):
+    """
+    Codex CLI 를 한 번 부른다.
 
-    cand = (data.get("candidates") or [{}])[0]
-    finish = cand.get("finishReason")
-    if finish not in (None, "STOP"):
-        return None, f"finishReason={finish}"
+    프롬프트는 stdin 으로 넣는다. `codex exec` 는 인자가 없으면 stdin 을 프롬프트로 읽는다.
+    Gemini 의 systemInstruction 자리가 없어 SYSTEM 을 앞에 붙인다.
 
-    try:
-        text = cand["content"]["parts"][0]["text"]
-        results = json.loads(text)["results"]
-    except Exception as e:
-        return None, f"파싱 실패: {e}"
+    샌드박스를 read-only 로 두는 이유는 판정이 파일을 고칠 일이 없기 때문이다.
+    프롬프트에 diff 와 앵커와 기준 문서가 이미 다 들어 있어 저장소를 뒤질 필요도 없다.
+    작업 루트를 빈 임시 디렉터리로 주어 그 사실을 구조로 강제한다.
+    """
+    with tempfile.TemporaryDirectory(prefix="llm-verify-") as tmp:
+        schema_path = Path(tmp) / "schema.json"
+        out_path = Path(tmp) / "last-message.json"
+        schema_path.write_text(json.dumps(SCHEMA), encoding="utf-8")
 
-    usage = data.get("usageMetadata", {})
+        cmd = [CODEX_BIN, "exec",
+               "--sandbox", "read-only",
+               "--cd", tmp,
+               "--skip-git-repo-check",
+               "--ephemeral",
+               "--ignore-user-config",
+               "--color", "never",
+               "--json",
+               "--output-schema", str(schema_path),
+               "--output-last-message", str(out_path)]
+        if CODEX_MODEL:
+            cmd += ["--model", CODEX_MODEL]
+
+        try:
+            proc = subprocess.run(cmd, input=SYSTEM + "\n\n" + prompt,
+                                  capture_output=True, text=True,
+                                  timeout=CALL_TIMEOUT_SEC)
+        except subprocess.TimeoutExpired:
+            return None, f"시간 초과 ({CALL_TIMEOUT_SEC}초)"
+        except FileNotFoundError:
+            return None, f"실행 실패: {CODEX_BIN} 를 찾을 수 없다"
+
+        # 모르는 모델 이름은 오류가 아니라 경고다. 그대로 두면 엉뚱한 모델로 조용히 돈다.
+        # 값이 판정 품질과 비용을 모두 바꾸므로 여기서 끊는다.
+        if "Model metadata for" in (proc.stderr or "") and "not found" in (proc.stderr or ""):
+            return None, f"알 수 없는 모델 이름: {CODEX_MODEL}"
+
+        if proc.returncode != 0:
+            tail = (proc.stderr or proc.stdout or "").strip()[-300:]
+            return None, f"실행 실패 (종료 {proc.returncode}): {tail}"
+
+        if not out_path.is_file():
+            return None, "실행 실패: 마지막 메시지 파일이 없다"
+
+        try:
+            results = json.loads(out_path.read_text(encoding="utf-8"))["results"]
+        except Exception as e:
+            return None, f"파싱 실패: {e}"
+
+        usage, kinds = _usage_of(proc.stdout, proc.stderr)
+        log_usage(f"{len(expected_ids)}건", len(prompt), usage, kinds,
+                  proc.stdout, proc.stderr)
+
     seen = {r["id"] for r in results}
     ok = seen == set(expected_ids)
     detail = "" if ok else f"응답 {len(seen)} / 요청 {len(expected_ids)}"
-    return {"results": results, "usage": usage, "complete": ok, "detail": detail}, None
+    return {"results": results, "usage": usage, "model": CODEX_MODEL,
+            "complete": ok, "detail": detail}, None
+
+
+def _usage_of(stdout, stderr):
+    """
+    CLI 가 --json 으로 뱉은 이벤트에서 모델 이름과 토큰 사용량을 건진다.
+
+    Gemini 는 usageMetadata 를 응답에 실어 줬는데 CLI 에는 그 자리가 없다.
+    이벤트 스키마는 판올림마다 바뀔 수 있으므로 키 이름을 넓게 훑는다.
+    이름에 token 이 들어간 정수와 model 로 보이는 문자열을 모은다.
+    못 건져도 판정은 계속한다. 사용량은 비용을 보기 위한 것이지 판정에 쓰이지 않는다.
+    """
+    usage, kinds = {}, []
+    for line in (stdout or "").splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        kind = ev.get("type") or ev.get("event") or ev.get("msg", {}).get("type")
+        if isinstance(kind, str) and kind not in kinds:
+            kinds.append(kind)
+        stack = [ev]
+        while stack:
+            o = stack.pop()
+            if isinstance(o, dict):
+                for k, v in o.items():
+                    if isinstance(v, (dict, list)):
+                        stack.append(v)
+                    elif isinstance(v, int) and "token" in k.lower():
+                        usage[k] = v
+                    # 키 이름을 고정하지 않는다. 판올림마다 model, model_slug,
+                    # effective_model 처럼 이름이 갈려서 하나만 보면 놓친다
+            elif isinstance(o, list):
+                stack.extend(o)
+    return usage, kinds
+
+
+def log_usage(label, prompt_chars, usage, kinds, stdout, stderr):
+    """
+    호출 하나의 비용 근거를 남긴다.
+
+    못 건졌으면 그 사실과 함께 CLI 출력의 끝부분을 남긴다.
+    형식을 모르는 채로 다음 판올림을 기다리는 것보다 한 번 보고 고치는 편이 빠르다.
+    """
+    # 모델은 이벤트에서 못 읽는다. --json 을 주면 CLI 가 헤더를 아예 안 찍는다.
+    # 대신 우리가 넘긴 값을 적는다. 그 이름이 틀렸으면 CLI 가 경고를 내므로 아래에서 잡는다.
+    used = CODEX_MODEL or "(CLI 기본값)"
+    if usage:
+        parts = ", ".join(f"{k} {v:,}" for k, v in sorted(usage.items()))
+        print(f"  사용량 {label}  모델 {used}  {parts}  (프롬프트 {prompt_chars:,}자)",
+              file=sys.stderr)
+    else:
+        tail = ((stderr or "") + (stdout or ""))[-400:].replace("\n", " | ")
+        print(f"  사용량 {label}  모델 {model or '?'}  토큰 정보를 못 찾았다 "
+              f"(프롬프트 {prompt_chars:,}자). 출력 끝: {tail}", file=sys.stderr)
 
 
 # --- 16단계: 필터링과 출력 -------------------------------------------------
@@ -718,6 +790,8 @@ def main():
     # match 전용. 활성 항목 목록을 여기 쓴다. 주지 않으면 쓰지 않는다.
     # --out 과 나누는 이유는 CI 가 --out 을 판정 코멘트에 쓰기 때문이다.
     ap.add_argument("--items-out", default="")
+    ap.add_argument("--full", action="store_true",
+                    help="다른 저장소 항목까지 판정한다. 기본은 대상 저장소 자신의 항목만 본다")
     ap.add_argument("--dry-run", action="store_true",
                     help="LLM 을 부르지 않고 무엇이 활성화되어 어떤 입력이 만들어지는지만 본다")
     args = ap.parse_args()
@@ -725,7 +799,6 @@ def main():
     anchors = load_yaml(Path(args.backend) / ".github/llm-verify/anchors.yml")
     files = changed_files(args.backend, args.base, args.head)
     rules, fallback = match_rules(anchors, files)
-    needs_baseline = any(r.get("needs_baseline_values") for r in rules)
 
     # 판정 대상이 하나도 안 바뀌었으면 판정하지 않는다.
     # 어떤 규칙에도 안 걸린 데다 코드도 안 바뀐 것은 답이 정해진 질문이다.
@@ -754,8 +827,6 @@ def main():
             registries.setdefault(d.get("source") or str(path),
                                   d["items"] if isinstance(d, dict) else d)
         active = active_items(rules, registries)
-        baseline_ids = sorted(i for i in active
-                              if i.startswith("REL-") or i.startswith("INF-"))
         # 로컬의 기본 판정 범위는 "이 저장소 자신의 항목" 이다.
         # ci_stage 로 가르면 backend 기준이라 infra 에서 돌릴 때 1단계가 0건이 된다.
         # 대상 저장소가 items.yml 의 source 로 자신을 밝히므로 그것과 맞춰 가른다.
@@ -764,8 +835,6 @@ def main():
         payload = {
             "skip": "true" if skip else "false",
             "code_changed": "true" if code_changed else "false",
-            "needs_baseline": "true" if needs_baseline and baseline_ids else "false",
-            "baseline_items": str(len(baseline_ids)),
             "active": str(len(active)),
             "source": own or "?",
             "own": str(len(mine)),
@@ -850,7 +919,8 @@ def main():
     # 활성에서 아예 빼는 이유는, 남겨 두면 판정하지 않은 것이 UNJUDGED 로 쌓여
     # 담당이 아니어서 안 본 것과 물었는데 답이 안 온 것이 뒤섞이기 때문이다.
     own_source = load_yaml(Path(args.backend) / ".github/llm-verify/items.yml").get("source")
-    deferred_to_local = {i: it for i, it in active.items() if it["repo"] != own_source}
+    deferred_to_local = ({} if args.full
+                         else {i: it for i, it in active.items() if it["repo"] != own_source})
     active = {i: it for i, it in active.items() if i not in deferred_to_local}
 
     if not active:
@@ -880,23 +950,29 @@ def main():
             anchor_files[path] = sliced
             ddl_note = f"{path} {info[0]}/{info[1]}개 테이블"
 
-    docs, missing_docs = collect_docs(active, roots)
-    # 확정값은 2단계 프롬프트에만 들어간다. 2단계를 돌지 않으면 읽어 봐야 쓰이지 않는다.
-    # 문서 10개에 29만 자라 읽는 것만으로도 낭비다.
-    baseline, baseline_failed = ({}, [])
-    if needs_baseline and 2 in CI_STAGES:
-        baseline, baseline_failed = collect_baseline(args.infra)
-    conflicts, intentional = conflict_map(
-        Path(args.common) / ".github/llm-verify/known-conflicts.yml")
-
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key and not args.dry_run:
-        print("GEMINI_API_KEY 가 없다", file=sys.stderr)
-        return 1
-
     by_stage = defaultdict(list)
     for it in active.values():
         by_stage[it.get("ci_stage", 1)].append(it)
+
+    # 기준 문서를 단계별로 나눠 싣는다.
+    #
+    # 한 덩어리로 모아 두면 build_prompt 가 단계 구분 없이 전부 실어서,
+    # backend 항목만 판정하는 1단계 프롬프트에 common 과 infra 문서가 함께 붙는다.
+    # --full 을 켜면 그 낭비가 1단계에서만 5만 자 가까이 된다.
+    docs_by_stage, missing_docs = {}, []
+    for st, items in by_stage.items():
+        d, miss = collect_docs({i["id"]: i for i in items}, roots)
+        docs_by_stage[st] = d
+        missing_docs += [m for m in miss if m not in missing_docs]
+
+    conflicts, intentional = conflict_map(
+        Path(args.common) / ".github/llm-verify/known-conflicts.yml")
+
+    # 인증은 CLI 가 맡는다. 여기서는 그 CLI 가 있는지만 본다.
+    # 로그인이 안 되어 있으면 첫 호출이 실패하며 그 사유가 그대로 리포트에 실린다.
+    if not args.dry_run and shutil.which(CODEX_BIN) is None:
+        print(f"{CODEX_BIN} 를 찾을 수 없다. 러너에서 설치와 로그인을 먼저 한다", file=sys.stderr)
+        return 1
 
     if args.dry_run:
         print(f"매칭 규칙   {', '.join(r['id'] for r in rules)}"
@@ -911,26 +987,27 @@ def main():
         print(f"  저장소별  {dict(by_repo)}")
         print(f"앵커 파일   읽음 {len(anchor_files)}, 부재 {len(absent)}, 실패 {len(failed)}"
               + (f"  (스키마 {ddl_note})" if ddl_note else ""))
-        print(f"기준 문서   {len(docs)}건" + (f", 못 읽음 {missing_docs}" if missing_docs else ""))
-        print(f"확정값      " + (f"{len(baseline)}건" if baseline else "불필요")
-              + (f", 못 읽음 {baseline_failed}" if baseline_failed else ""))
+        print("기준 문서   " + ", ".join(f"{st}단계 {len(d)}건" for st, d in sorted(docs_by_stage.items()))
+              + (f", 못 읽음 {missing_docs}" if missing_docs else ""))
         print(f"모순 유보   {len([i for i in active if i in conflicts])}건")
         eff = [i for i in active if i in intentional and i not in conflicts]
         shadow = [i for i in active if i in intentional and i in conflicts]
         print(f"의도된 이탈 {len(eff)}건"
               + (f" (모순으로 가려진 것 {len(shadow)}건: {', '.join(shadow)})" if shadow else ""))
-        for s in CI_STAGES:
+        for s in ((1, 2) if args.full else CI_STAGES):
             batch = by_stage.get(s, [])
             if batch:
                 p = build_prompt(batch, diff, anchor_files if s == 1 else {},
-                                 absent, docs, conflicts, intentional,
-                                 baseline if s == 2 else None)
+                                 absent, docs_by_stage.get(s, {}), conflicts, intentional)
                 print(f"프롬프트 {s}단계  {len(p):,}자 (대략 {len(p)//2:,} 토큰)")
         return 0
 
+    # --full 이면 2단계까지 본다. 아니면 상수가 정한 범위만 본다
+    stages_to_run = (1, 2) if args.full else CI_STAGES
+
     results, stages = [], {}
     stage1_ok = True
-    for stage in CI_STAGES:
+    for stage in stages_to_run:
         batch = by_stage.get(stage, [])
         if not batch:
             continue
@@ -943,9 +1020,8 @@ def main():
         for n, chunk in enumerate(chunks, 1):
             ids = [i["id"] for i in chunk]
             prompt = build_prompt(chunk, diff, anchor_files if stage == 1 else {},
-                                  absent, docs, conflicts, intentional,
-                                  baseline if stage == 2 else None)
-            resp, err = call_gemini(api_key, prompt, ids)
+                                  absent, docs_by_stage.get(stage, {}), conflicts, intentional)
+            resp, err = call_judge(prompt, ids)
             if err:
                 errs.append(f"{n}/{len(chunks)}: {err}")
                 continue
@@ -989,7 +1065,7 @@ def main():
         "stages": stages, "new": new, "existing": existing,
         "conflicting": conflicting, "insufficient": insufficient,
         "unjudged": unjudged, "counts": counts,
-        "missing_anchors": failed + missing_docs + baseline_failed,
+        "missing_anchors": failed + missing_docs,
         "absent": absent, "suppressed": suppressed,
     }
     Path(args.out).write_text(render(ctx), encoding="utf-8")
