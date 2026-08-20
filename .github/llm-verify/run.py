@@ -531,6 +531,11 @@ def _call_once(prompt, expected_ids):
         except FileNotFoundError:
             return None, f"실행 실패: {CODEX_BIN} 를 찾을 수 없다"
 
+        # 모르는 모델 이름은 오류가 아니라 경고다. 그대로 두면 엉뚱한 모델로 조용히 돈다.
+        # 값이 판정 품질과 비용을 모두 바꾸므로 여기서 끊는다.
+        if "Model metadata for" in (proc.stderr or "") and "not found" in (proc.stderr or ""):
+            return None, f"알 수 없는 모델 이름: {CODEX_MODEL}"
+
         if proc.returncode != 0:
             tail = (proc.stderr or proc.stdout or "").strip()[-300:]
             return None, f"실행 실패 (종료 {proc.returncode}): {tail}"
@@ -543,14 +548,14 @@ def _call_once(prompt, expected_ids):
         except Exception as e:
             return None, f"파싱 실패: {e}"
 
-        model, usage, kinds = _usage_of(proc.stdout, proc.stderr)
-        log_usage(f"{len(expected_ids)}건", len(prompt), model, usage, kinds,
+        usage, kinds = _usage_of(proc.stdout, proc.stderr)
+        log_usage(f"{len(expected_ids)}건", len(prompt), usage, kinds,
                   proc.stdout, proc.stderr)
 
     seen = {r["id"] for r in results}
     ok = seen == set(expected_ids)
     detail = "" if ok else f"응답 {len(seen)} / 요청 {len(expected_ids)}"
-    return {"results": results, "usage": usage, "model": model,
+    return {"results": results, "usage": usage, "model": CODEX_MODEL,
             "complete": ok, "detail": detail}, None
 
 
@@ -563,7 +568,7 @@ def _usage_of(stdout, stderr):
     이름에 token 이 들어간 정수와 model 로 보이는 문자열을 모은다.
     못 건져도 판정은 계속한다. 사용량은 비용을 보기 위한 것이지 판정에 쓰이지 않는다.
     """
-    model, usage, kinds = None, {}, []
+    usage, kinds = {}, []
     for line in (stdout or "").splitlines():
         line = line.strip()
         if not line.startswith("{"):
@@ -586,28 +591,25 @@ def _usage_of(stdout, stderr):
                         usage[k] = v
                     # 키 이름을 고정하지 않는다. 판올림마다 model, model_slug,
                     # effective_model 처럼 이름이 갈려서 하나만 보면 놓친다
-                    elif isinstance(v, str) and "model" in k.lower() and v:
-                        model = model or v
             elif isinstance(o, list):
                 stack.extend(o)
-    return model, usage, kinds
+    return usage, kinds
 
 
-def log_usage(label, prompt_chars, model, usage, kinds, stdout, stderr):
+def log_usage(label, prompt_chars, usage, kinds, stdout, stderr):
     """
     호출 하나의 비용 근거를 남긴다.
 
     못 건졌으면 그 사실과 함께 CLI 출력의 끝부분을 남긴다.
     형식을 모르는 채로 다음 판올림을 기다리는 것보다 한 번 보고 고치는 편이 빠르다.
     """
+    # 모델은 이벤트에서 못 읽는다. --json 을 주면 CLI 가 헤더를 아예 안 찍는다.
+    # 대신 우리가 넘긴 값을 적는다. 그 이름이 틀렸으면 CLI 가 경고를 내므로 아래에서 잡는다.
+    used = CODEX_MODEL or "(CLI 기본값)"
     if usage:
         parts = ", ".join(f"{k} {v:,}" for k, v in sorted(usage.items()))
-        print(f"  사용량 {label}  모델 {model or '?'}  {parts}  (프롬프트 {prompt_chars:,}자)",
+        print(f"  사용량 {label}  모델 {used}  {parts}  (프롬프트 {prompt_chars:,}자)",
               file=sys.stderr)
-        # 모델만 못 건졌으면 어떤 이벤트가 오갔는지 남긴다. 다음 판에서 키를 맞추는 근거다
-        if not model and kinds:
-            print(f"    모델 이름을 못 찾았다. 이벤트 종류: {', '.join(kinds[:12])}",
-                  file=sys.stderr)
     else:
         tail = ((stderr or "") + (stdout or ""))[-400:].replace("\n", " | ")
         print(f"  사용량 {label}  모델 {model or '?'}  토큰 정보를 못 찾았다 "
