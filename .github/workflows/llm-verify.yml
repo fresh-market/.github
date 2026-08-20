@@ -48,6 +48,12 @@ on:
         required: false
       OPENAI_API_KEY:
         required: false
+      # 과도기 선언이다. 판정 엔진이 Gemini 였을 때 부르던 이름이고 지금은 쓰지 않는다.
+      # 이미 열려 있는 PR 들은 각자 브랜치의 옛 pr-gate.yml 을 쓰는데 그것이 이 이름을 넘긴다.
+      # 선언을 지우면 "선언되지 않은 시크릿" 으로 그 PR 들의 게이트가 통째로 죽는다.
+      # 열려 있던 PR 이 모두 닫히거나 리베이스되면 이 줄을 지운다.
+      GEMINI_API_KEY:
+        required: false
 
 permissions:
   contents: read
