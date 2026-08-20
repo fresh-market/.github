@@ -543,8 +543,8 @@ def _call_once(prompt, expected_ids):
         except Exception as e:
             return None, f"파싱 실패: {e}"
 
-        model, usage = _usage_of(proc.stdout, proc.stderr)
-        log_usage(f"{len(expected_ids)}건", len(prompt), model, usage,
+        model, usage, kinds = _usage_of(proc.stdout, proc.stderr)
+        log_usage(f"{len(expected_ids)}건", len(prompt), model, usage, kinds,
                   proc.stdout, proc.stderr)
 
     seen = {r["id"] for r in results}
@@ -563,7 +563,7 @@ def _usage_of(stdout, stderr):
     이름에 token 이 들어간 정수와 model 로 보이는 문자열을 모은다.
     못 건져도 판정은 계속한다. 사용량은 비용을 보기 위한 것이지 판정에 쓰이지 않는다.
     """
-    model, usage = None, {}
+    model, usage, kinds = None, {}, []
     for line in (stdout or "").splitlines():
         line = line.strip()
         if not line.startswith("{"):
@@ -572,6 +572,9 @@ def _usage_of(stdout, stderr):
             ev = json.loads(line)
         except ValueError:
             continue
+        kind = ev.get("type") or ev.get("event") or ev.get("msg", {}).get("type")
+        if isinstance(kind, str) and kind not in kinds:
+            kinds.append(kind)
         stack = [ev]
         while stack:
             o = stack.pop()
@@ -581,14 +584,16 @@ def _usage_of(stdout, stderr):
                         stack.append(v)
                     elif isinstance(v, int) and "token" in k.lower():
                         usage[k] = v
-                    elif k in ("model", "model_slug", "effective_model") and isinstance(v, str):
-                        model = v
+                    # 키 이름을 고정하지 않는다. 판올림마다 model, model_slug,
+                    # effective_model 처럼 이름이 갈려서 하나만 보면 놓친다
+                    elif isinstance(v, str) and "model" in k.lower() and v:
+                        model = model or v
             elif isinstance(o, list):
                 stack.extend(o)
-    return model, usage
+    return model, usage, kinds
 
 
-def log_usage(label, prompt_chars, model, usage, stdout, stderr):
+def log_usage(label, prompt_chars, model, usage, kinds, stdout, stderr):
     """
     호출 하나의 비용 근거를 남긴다.
 
@@ -599,6 +604,10 @@ def log_usage(label, prompt_chars, model, usage, stdout, stderr):
         parts = ", ".join(f"{k} {v:,}" for k, v in sorted(usage.items()))
         print(f"  사용량 {label}  모델 {model or '?'}  {parts}  (프롬프트 {prompt_chars:,}자)",
               file=sys.stderr)
+        # 모델만 못 건졌으면 어떤 이벤트가 오갔는지 남긴다. 다음 판에서 키를 맞추는 근거다
+        if not model and kinds:
+            print(f"    모델 이름을 못 찾았다. 이벤트 종류: {', '.join(kinds[:12])}",
+                  file=sys.stderr)
     else:
         tail = ((stderr or "") + (stdout or ""))[-400:].replace("\n", " | ")
         print(f"  사용량 {label}  모델 {model or '?'}  토큰 정보를 못 찾았다 "

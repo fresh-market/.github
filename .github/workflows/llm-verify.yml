@@ -116,7 +116,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: npm i -g @openai/codex@0.142.5
+      - run: npm i -g @openai/codex@0.148.0
 
       # 로그인은 여기서 한 번만 한다. run.py 는 CLI 가 이미 인증돼 있다고 보고 부른다.
       # 러너는 일회성이라 자격증명이 잡 종료와 함께 사라진다.
@@ -178,8 +178,16 @@ jobs:
       - name: 판정
         id: judge
         env:
-          # 모델을 비우면 CLI 기본값을 쓴다. 고정하려면 여기에 이름을 준다.
-          CODEX_MODEL: ${{ vars.CODEX_MODEL }}
+          # 모델을 코드에 적는다. 판정 결과와 비용을 바꾸는 값이라 이력에 남아야 한다.
+          #
+          # 비워 두면 CLI 기본값을 쓰는데, 그 기본값이 판올림마다 바뀐다.
+          # 0.142.5 는 gpt-5.5, 0.148.0 은 gpt-5.6-sol 이 기본이고 둘 다 단가가 125/750 이다.
+          # terra 는 50/300 이라 같은 판정이 3분의 1 값이다.
+          # 이 작업은 스키마가 고정된 분류라 추론 토큰이 호출당 50개 남짓밖에 안 나온다.
+          # 상위 모델을 쓸 근거가 약해서 terra 로 둔다.
+          #
+          # 저장소 변수로 덮어쓸 수 있다. 모델을 비교할 때 쓴다.
+          CODEX_MODEL: ${{ vars.CODEX_MODEL || 'gpt-5.6-terra' }}
         run: |
           python common/.github/llm-verify/run.py --mode judge \
             --backend target --common common --infra infra \
