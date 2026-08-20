@@ -6,7 +6,7 @@ fresh-market/fm-backend 의 docs/verification/verification-workflow.md "진입�
 워크플로 yml 은 체크아웃과 코멘트만 하고, 판정 파이프라인은 전부 여기 있다.
 
 두 모드로 나뉜다.
-  match  앵커 규칙만 매칭해 needs_baseline 을 내놓는다. infra 체크아웃 여부를 정하기 위해서다
+  match  앵커 규칙만 매칭해 활성 항목을 계산한다. 판정 범위와 체크아웃을 정하기 위해서다
   judge  4~16 단계 전체
 
 설계 문서와 다른 점이 하나 있다.
@@ -158,7 +158,6 @@ def match_rules(anchors, files):
     fallback = dict(anchors["defaults"]["on_no_match"])
     fallback.setdefault("id", "on_no_match")
     fallback.setdefault("anchors", [])
-    fallback["needs_baseline_values"] = False
     return [fallback], True
 
 
@@ -332,30 +331,6 @@ def collect_docs(active, roots):
     return docs, missing
 
 
-def collect_baseline(infra_root, limit_bytes=400_000):
-    """
-    확정값 문서를 읽는다. 앵커 규칙이 needs_baseline_values 를 걸었을 때만 부른다.
-
-    이 문서들은 "왜 그 값인가" 를 담고 있어 크다(전체 165KB). 매번 넣으면 토큰이 낭비되고,
-    무엇보다 판정과 무관한 서술이 많아 LLM 의 주의를 흩뜨린다.
-    타임아웃 값이나 풀 크기를 확정값과 대조해야 하는 규칙에서만 넣는다.
-    """
-    if not infra_root:
-        return {}, ["infra 저장소가 없다"]
-    root = Path(infra_root) / "docs" / "system-design"
-    if not root.is_dir():
-        return {}, [f"{root} 가 없다"]
-    got, failed, total = {}, [], 0
-    for f in sorted(root.glob("*.md")):
-        text = f.read_text(encoding="utf-8", errors="replace")
-        if total + len(text) > limit_bytes:
-            failed.append(f"{f.name} (용량 상한 초과)")
-            continue
-        got[f.name] = text
-        total += len(text)
-    return got, failed
-
-
 def conflict_map(path):
     """
     항목 ID -> 모순 정보. 두 종류를 나눠 돌려준다.
@@ -434,7 +409,7 @@ SCHEMA = {
 
 
 def build_prompt(items, diff, anchor_files, absent, docs, conflicts,
-                 intentional=None, baseline=None):
+                 intentional=None):
     intentional = intentional or {}
     parts = ["# 판정할 점검 항목\n"]
     for it in items:
@@ -477,15 +452,6 @@ def build_prompt(items, diff, anchor_files, absent, docs, conflicts,
     parts.append("\n# 판정 기준 본문\n")
     for name, text in docs.items():
         parts.append(f"## {name}\n{text}")
-
-    if baseline:
-        parts.append(
-            "\n# 확정값\n"
-            "이 팀이 실제로 정한 값이다. 점검 항목 본문의 일반론과 어긋나면 **확정값이 이긴다.**\n"
-            "근거가 더 구체적이기 때문이다. 값을 대조하는 항목은 여기 적힌 수치를 기준으로 판정한다.\n"
-        )
-        for name, text in baseline.items():
-            parts.append(f"## {name}\n{text}")
 
     return "\n".join(parts)
 
@@ -782,7 +748,6 @@ def main():
     anchors = load_yaml(Path(args.backend) / ".github/llm-verify/anchors.yml")
     files = changed_files(args.backend, args.base, args.head)
     rules, fallback = match_rules(anchors, files)
-    needs_baseline = any(r.get("needs_baseline_values") for r in rules)
 
     # 판정 대상이 하나도 안 바뀌었으면 판정하지 않는다.
     # 어떤 규칙에도 안 걸린 데다 코드도 안 바뀐 것은 답이 정해진 질문이다.
@@ -811,8 +776,6 @@ def main():
             registries.setdefault(d.get("source") or str(path),
                                   d["items"] if isinstance(d, dict) else d)
         active = active_items(rules, registries)
-        baseline_ids = sorted(i for i in active
-                              if i.startswith("REL-") or i.startswith("INF-"))
         # 로컬의 기본 판정 범위는 "이 저장소 자신의 항목" 이다.
         # ci_stage 로 가르면 backend 기준이라 infra 에서 돌릴 때 1단계가 0건이 된다.
         # 대상 저장소가 items.yml 의 source 로 자신을 밝히므로 그것과 맞춰 가른다.
@@ -821,8 +784,6 @@ def main():
         payload = {
             "skip": "true" if skip else "false",
             "code_changed": "true" if code_changed else "false",
-            "needs_baseline": "true" if needs_baseline and baseline_ids else "false",
-            "baseline_items": str(len(baseline_ids)),
             "active": str(len(active)),
             "source": own or "?",
             "own": str(len(mine)),
@@ -938,11 +899,6 @@ def main():
             ddl_note = f"{path} {info[0]}/{info[1]}개 테이블"
 
     docs, missing_docs = collect_docs(active, roots)
-    # 확정값은 2단계 프롬프트에만 들어간다. 2단계를 돌지 않으면 읽어 봐야 쓰이지 않는다.
-    # 문서 10개에 29만 자라 읽는 것만으로도 낭비다.
-    baseline, baseline_failed = ({}, [])
-    if needs_baseline and 2 in CI_STAGES:
-        baseline, baseline_failed = collect_baseline(args.infra)
     conflicts, intentional = conflict_map(
         Path(args.common) / ".github/llm-verify/known-conflicts.yml")
 
@@ -970,8 +926,6 @@ def main():
         print(f"앵커 파일   읽음 {len(anchor_files)}, 부재 {len(absent)}, 실패 {len(failed)}"
               + (f"  (스키마 {ddl_note})" if ddl_note else ""))
         print(f"기준 문서   {len(docs)}건" + (f", 못 읽음 {missing_docs}" if missing_docs else ""))
-        print(f"확정값      " + (f"{len(baseline)}건" if baseline else "불필요")
-              + (f", 못 읽음 {baseline_failed}" if baseline_failed else ""))
         print(f"모순 유보   {len([i for i in active if i in conflicts])}건")
         eff = [i for i in active if i in intentional and i not in conflicts]
         shadow = [i for i in active if i in intentional and i in conflicts]
@@ -981,8 +935,7 @@ def main():
             batch = by_stage.get(s, [])
             if batch:
                 p = build_prompt(batch, diff, anchor_files if s == 1 else {},
-                                 absent, docs, conflicts, intentional,
-                                 baseline if s == 2 else None)
+                                 absent, docs, conflicts, intentional)
                 print(f"프롬프트 {s}단계  {len(p):,}자 (대략 {len(p)//2:,} 토큰)")
         return 0
 
@@ -1001,8 +954,7 @@ def main():
         for n, chunk in enumerate(chunks, 1):
             ids = [i["id"] for i in chunk]
             prompt = build_prompt(chunk, diff, anchor_files if stage == 1 else {},
-                                  absent, docs, conflicts, intentional,
-                                  baseline if stage == 2 else None)
+                                  absent, docs, conflicts, intentional)
             resp, err = call_judge(prompt, ids)
             if err:
                 errs.append(f"{n}/{len(chunks)}: {err}")
@@ -1047,7 +999,7 @@ def main():
         "stages": stages, "new": new, "existing": existing,
         "conflicting": conflicting, "insufficient": insufficient,
         "unjudged": unjudged, "counts": counts,
-        "missing_anchors": failed + missing_docs + baseline_failed,
+        "missing_anchors": failed + missing_docs,
         "absent": absent, "suppressed": suppressed,
     }
     Path(args.out).write_text(render(ctx), encoding="utf-8")
