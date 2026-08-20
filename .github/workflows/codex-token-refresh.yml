@@ -1,0 +1,87 @@
+# Codex 액세스 토큰 갱신 (본체)
+#
+# ChatGPT 구독으로 판정을 돌리면 액세스 토큰 수명이 10일이다. 그대로 두면
+# 열흘마다 사람이 로그인해 시크릿을 갈아야 하고, 잊으면 게이트가 인증 실패로 죽는다.
+#
+# 갱신은 표준 OAuth 다. 발급자가 https://auth.openai.com 이고
+# 디스커버리 문서가 refresh_token 그랜트를 지원한다고 밝힌다.
+#
+# 갱신하는 곳을 여기 하나로 묶는 것이 핵심이다.
+# 리프레시 토큰은 한 번 쓰면 새것으로 교체되므로, PR 게이트가 각자 갱신하면
+# 동시 실행이 서로의 토큰을 소모해 둘 다 끊긴다. PR 쪽은 읽기만 하고 여기서만 회전시킨다.
+
+name: Codex 토큰 갱신
+
+on:
+  workflow_call:
+    inputs:
+      client_id:
+        description: Codex CLI 의 공개 OAuth 클라이언트 ID
+        type: string
+        default: app_EMoamEEZ73f0CkXaXp7hrann
+    secrets:
+      CODEX_REFRESH_TOKEN:
+        required: true
+      # 시크릿 쓰기 권한이 있는 토큰. GITHUB_TOKEN 으로는 시크릿을 못 쓴다
+      SECRETS_PAT:
+        required: true
+
+# 두 개가 동시에 돌면 리프레시 토큰을 서로 소모해 둘 다 끊긴다.
+# 앞선 실행을 취소하지 않고 줄을 세운다.
+concurrency:
+  group: codex-token-refresh-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 토큰 갱신
+        env:
+          CLIENT_ID: ${{ inputs.client_id }}
+          REFRESH: ${{ secrets.CODEX_REFRESH_TOKEN }}
+          GH_TOKEN: ${{ secrets.SECRETS_PAT }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          BODY=$(jq -n --arg c "$CLIENT_ID" --arg r "$REFRESH" \
+            '{client_id:$c, grant_type:"refresh_token", refresh_token:$r}')
+
+          RESP=$(curl -sS --max-time 30 -X POST \
+            https://auth.openai.com/api/accounts/oauth/token \
+            -H 'Content-Type: application/json' -d "$BODY")
+
+          ACCESS=$(printf '%s' "$RESP" | jq -r '.access_token // empty')
+          NEW_REFRESH=$(printf '%s' "$RESP" | jq -r '.refresh_token // empty')
+
+          if [ -z "$ACCESS" ]; then
+            # 본문에 토큰이 없으니 그대로 찍어도 새는 것이 없다. 사유를 알아야 고친다
+            echo "::error::갱신 실패. 응답: $(printf '%s' "$RESP" | head -c 500)"
+            exit 1
+          fi
+
+          # 로그에 토큰이 새지 않게 가린다
+          echo "::add-mask::$ACCESS"
+          [ -n "$NEW_REFRESH" ] && echo "::add-mask::$NEW_REFRESH"
+
+          # 새 토큰이 언제까지 사는지만 남긴다. 다음 갱신 주기를 판단하는 근거다
+          EXP=$(printf '%s' "$ACCESS" | cut -d. -f2 \
+                | tr '_-' '/+' | base64 -d 2>/dev/null | jq -r '.exp // empty' || true)
+          if [ -n "$EXP" ]; then
+            echo "새 액세스 토큰 만료: $(date -u -d "@$EXP" '+%Y-%m-%d %H:%M UTC')"
+          fi
+
+          # 리프레시 토큰을 먼저 쓴다. 순서가 중요하다.
+          #
+          # 갱신 요청이 성공한 시점에 옛 리프레시 토큰은 이미 소모됐다.
+          # 새것을 저장하지 못한 채 잡이 죽으면 사슬이 끊겨 사람이 다시 로그인해야 한다.
+          # 액세스 토큰은 다음 주기에 다시 받으면 되지만 이쪽은 복구가 안 된다.
+          if [ -n "$NEW_REFRESH" ] && [ "$NEW_REFRESH" != "$REFRESH" ]; then
+            gh secret set CODEX_REFRESH_TOKEN --repo "$REPO" --body "$NEW_REFRESH"
+            echo "CODEX_REFRESH_TOKEN 회전"
+          fi
+
+          gh secret set CODEX_ACCESS_TOKEN --repo "$REPO" --body "$ACCESS"
+          echo "CODEX_ACCESS_TOKEN 갱신"
