@@ -550,6 +550,7 @@ def _call_once(prompt, expected_ids):
                "--ephemeral",
                "--ignore-user-config",
                "--color", "never",
+               "--json",
                "--output-schema", str(schema_path),
                "--output-last-message", str(out_path)]
         if CODEX_MODEL:
@@ -576,30 +577,66 @@ def _call_once(prompt, expected_ids):
         except Exception as e:
             return None, f"파싱 실패: {e}"
 
-        usage = _usage_of(proc.stderr, proc.stdout)
+        model, usage = _usage_of(proc.stdout, proc.stderr)
+        log_usage(f"{len(expected_ids)}건", len(prompt), model, usage,
+                  proc.stdout, proc.stderr)
 
     seen = {r["id"] for r in results}
     ok = seen == set(expected_ids)
     detail = "" if ok else f"응답 {len(seen)} / 요청 {len(expected_ids)}"
-    return {"results": results, "usage": usage, "complete": ok, "detail": detail}, None
+    return {"results": results, "usage": usage, "model": model,
+            "complete": ok, "detail": detail}, None
 
 
-def _usage_of(*streams):
+def _usage_of(stdout, stderr):
     """
-    CLI 가 뱉은 텍스트에서 토큰 사용량을 건져 본다.
+    CLI 가 --json 으로 뱉은 이벤트에서 모델 이름과 토큰 사용량을 건진다.
 
     Gemini 는 usageMetadata 를 응답에 실어 줬는데 CLI 에는 그 자리가 없다.
-    출력 형식이 판올림마다 바뀔 수 있으므로 못 찾으면 빈 값을 돌려주고 판정은 계속한다.
-    사용량은 비용을 보기 위한 것이지 판정에 쓰이지 않는다.
+    이벤트 스키마는 판올림마다 바뀔 수 있으므로 키 이름을 넓게 훑는다.
+    이름에 token 이 들어간 정수와 model 로 보이는 문자열을 모은다.
+    못 건져도 판정은 계속한다. 사용량은 비용을 보기 위한 것이지 판정에 쓰이지 않는다.
     """
-    keys = ("input", "output", "cached", "total")
-    found = {}
-    for text in streams:
-        for m in re.finditer(r"(\w+)\s*tokens?\W{0,3}([\d,]+)", text or "", re.I):
-            name = m.group(1).lower()
-            if name in keys:
-                found.setdefault(name, int(m.group(2).replace(",", "")))
-    return found
+    model, usage = None, {}
+    for line in (stdout or "").splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        stack = [ev]
+        while stack:
+            o = stack.pop()
+            if isinstance(o, dict):
+                for k, v in o.items():
+                    if isinstance(v, (dict, list)):
+                        stack.append(v)
+                    elif isinstance(v, int) and "token" in k.lower():
+                        usage[k] = v
+                    elif k in ("model", "model_slug", "effective_model") and isinstance(v, str):
+                        model = v
+            elif isinstance(o, list):
+                stack.extend(o)
+    return model, usage
+
+
+def log_usage(label, prompt_chars, model, usage, stdout, stderr):
+    """
+    호출 하나의 비용 근거를 남긴다.
+
+    못 건졌으면 그 사실과 함께 CLI 출력의 끝부분을 남긴다.
+    형식을 모르는 채로 다음 판올림을 기다리는 것보다 한 번 보고 고치는 편이 빠르다.
+    """
+    if usage:
+        parts = ", ".join(f"{k} {v:,}" for k, v in sorted(usage.items()))
+        print(f"  사용량 {label}  모델 {model or '?'}  {parts}  (프롬프트 {prompt_chars:,}자)",
+              file=sys.stderr)
+    else:
+        tail = ((stderr or "") + (stdout or ""))[-400:].replace("\n", " | ")
+        print(f"  사용량 {label}  모델 {model or '?'}  토큰 정보를 못 찾았다 "
+              f"(프롬프트 {prompt_chars:,}자). 출력 끝: {tail}", file=sys.stderr)
 
 
 # --- 16단계: 필터링과 출력 -------------------------------------------------
