@@ -394,27 +394,38 @@ SYSTEM = """너는 웹 백엔드 코드 리뷰어다. 주어진 점검 항목 �
    점검 항목 본문의 일반론과 다르다는 이유로 위반이라고 답하지 않는다.
 7. 앵커 파일은 diff 에 없어도 첨부된 것이다. "저장소에 존재하지 않는 경로" 목록은
    검색 실패가 아니라 부재의 확인이므로, 무언가가 없다는 판정의 근거로 그대로 쓴다.
-8. reason 과 fix 는 한국어로 각각 한 문장씩 쓴다.
+8. 해당 없는 필드는 null 로 둔다. 위반이 아니면 file, line, fix 가 null 이다.
+9. reason 과 fix 는 한국어로 각각 한 문장씩 쓴다.
    다만 항목 ID, verdict, 파일 경로, 클래스명, 메서드명, 설정 키와 값은 원문 그대로 둔다.
    번역하면 검색과 대조가 깨진다.
 """
 
+# 구조화 출력 스키마.
+#
+# 엄격 모드라 객체마다 additionalProperties 를 false 로 두고 모든 속성을 required 에 넣어야 한다.
+# 넣지 않으면 호출이 400 으로 거절된다. 실제로 그 오류로 판정이 통째로 죽은 적이 있다.
+#   Invalid schema for response_format: 'additionalProperties' is required to be supplied and to be false
+#
+# 그래서 "선택 필드" 를 required 에서 빼는 방식이 안 된다. 대신 null 을 허용해 같은 뜻을 만든다.
+# 위반이 아닌 항목은 file, line, reason, fix 를 null 로 답한다.
 SCHEMA = {
     "type": "object",
+    "additionalProperties": False,
     "properties": {
         "results": {
             "type": "array",
             "items": {
                 "type": "object",
+                "additionalProperties": False,
                 "properties": {
                     "id": {"type": "string"},
                     "verdict": {"type": "string", "enum": VERDICTS},
-                    "file": {"type": "string"},
-                    "line": {"type": "integer"},
-                    "reason": {"type": "string"},
-                    "fix": {"type": "string"},
+                    "file": {"type": ["string", "null"]},
+                    "line": {"type": ["integer", "null"]},
+                    "reason": {"type": ["string", "null"]},
+                    "fix": {"type": ["string", "null"]},
                 },
-                "required": ["id", "verdict"],
+                "required": ["id", "verdict", "file", "line", "reason", "fix"],
             },
         }
     },
@@ -507,9 +518,13 @@ def _retryable(err):
 
     스키마를 못 맞췄거나 항목이 빠진 응답은 다시 불러도 같으므로 재시도하지 않는다.
     한도 초과도 뺀다. 거부된 호출도 사용량에 잡히므로 다시 부르면 판정 없이 예산만 태운다.
+
+    종료 코드가 0이 아니라는 것만으로 다시 부르지 않는다. 스키마가 거절당한 경우가 그런데,
+    같은 요청을 다시 보내면 같은 400 이 온다. 실제로 그 오류에 재시도 세 번을 태운 적이 있다.
+    네트워크와 시간 초과처럼 다시 부를 이유가 분명한 것만 남긴다.
     """
-    return any(s in err for s in ("실행 실패", "시간 초과", "5xx", "timed out",
-                                 "connection", "ECONNRESET", "ETIMEDOUT"))
+    return any(s in err for s in ("시간 초과", "timed out", "connection",
+                                 "ECONNRESET", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN"))
 
 
 def _call_once(prompt, expected_ids):
