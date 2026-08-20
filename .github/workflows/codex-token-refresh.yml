@@ -73,12 +73,15 @@ jobs:
             echo "새 액세스 토큰 만료: $(date -u -d "@$EXP" '+%Y-%m-%d %H:%M UTC')"
           fi
 
-          gh secret set CODEX_ACCESS_TOKEN --repo "$REPO" --body "$ACCESS"
-          echo "CODEX_ACCESS_TOKEN 갱신"
-
-          # 리프레시 토큰이 회전됐으면 그것도 되쓴다.
-          # 안 쓰면 다음 실행이 이미 소모된 토큰을 들고 가 끊긴다.
+          # 리프레시 토큰을 먼저 쓴다. 순서가 중요하다.
+          #
+          # 갱신 요청이 성공한 시점에 옛 리프레시 토큰은 이미 소모됐다.
+          # 새것을 저장하지 못한 채 잡이 죽으면 사슬이 끊겨 사람이 다시 로그인해야 한다.
+          # 액세스 토큰은 다음 주기에 다시 받으면 되지만 이쪽은 복구가 안 된다.
           if [ -n "$NEW_REFRESH" ] && [ "$NEW_REFRESH" != "$REFRESH" ]; then
             gh secret set CODEX_REFRESH_TOKEN --repo "$REPO" --body "$NEW_REFRESH"
             echo "CODEX_REFRESH_TOKEN 회전"
           fi
+
+          gh secret set CODEX_ACCESS_TOKEN --repo "$REPO" --body "$ACCESS"
+          echo "CODEX_ACCESS_TOKEN 갱신"
