@@ -20,31 +20,37 @@ source: common
 conflicts:
   - id: readiness-include-db
     topic: readiness 포함 대상
-    status: unresolved
+    status: resolved
     since: 2026-08-05
+    resolved_at: 2026-08-20
+    resolved_by: "fm-infra 13eacf6"
     affects: [REL-5-01, REL-5-02, INF-4-01]
+    decision: "readiness 에 공유 의존성을 넣지 않는다. include: diskSpace"
     sources:
       - doc: 백엔드공통_앱과DB_장애대응구조.md
         section: "1.1절"
         value: "db 포함은 잘못이며 철회. 공유 의존성 제외"
       - doc: 백엔드공통_기술스택_확정문서.md
         section: "4.2절"
-        value: "readiness: include: db, diskSpace"
+        value: "readiness: include: diskSpace"
     note: >
-      가장 위험한 항목이다. 철회된 설계가 다른 문서에 살아남아 있고
-      그 문서가 실행 가능한 yaml 형태라 그대로 복사될 가능성이 높다.
-      공유 의존성을 readiness 에 넣으면 DB 장애 시 전 인스턴스가 동시에
-      대상 그룹에서 빠지는데, 두 문서가 공통으로 경계한 실패 양상이다.
+      기술 스택 확정 문서가 옛 값을 실행 가능한 yaml 형태로 들고 있었다.
+      INF-16 이 되돌릴 수 없는 결정으로 등록해 둔 쪽에 맞춰 db 를 걷어냈다.
+      같은 문서의 "readiness 포함 대상" 행도 "Critical 의존성만 포함" 에서
+      "공유 여부로 가른다" 로 함께 고쳤다. 등급이 아니라 공유 여부가 기준이다.
 
   - id: deploy-capacity
     topic: 배포 중 확보 용량
-    status: unresolved
+    status: resolved
     since: 2026-08-05
+    resolved_at: 2026-08-20
+    resolved_by: "fm-infra 5921a47"
     affects: [OPS-1-07, INF-2-01]
+    decision: "100%"
     sources:
       - doc: 백엔드공통_장애대응목표와_아키텍처결정.md
         section: "7.1절"
-        value: "50%"
+        value: "100%"
       - doc: 백엔드공통_무중단배포_롤링.md
         section: "1절"
         value: "100%"
@@ -52,40 +58,54 @@ conflicts:
         section: "7절 표"
         value: "100%"
     note: >
-      같은 문서 안에서도 어긋난다. 시스템 디자인 종합 7절 표는 100% 인데
-      7.3절 본문은 "용량이 절반이 되는데" 다.
+      장애 대응 목표 7.1절이 채택하지 않은 롤링 변형을 서술하고 있었다.
+      실제 절차는 desired +1 로 신규를 먼저 띄우므로 용량이 줄지 않는다(INF-29).
+      시스템 디자인 종합 7.3절이 "용량이 절반이 되므로" 를 부하 시험 중 배포
+      금지의 근거로 삼고 있던 것도 함께 고쳤다. 실제 근거는 혼재 구간이
+      측정을 오염시킨다는 것이다.
 
   - id: deploy-duration
     topic: 배포 소요 시간
-    status: unresolved
+    status: resolved
     since: 2026-08-05
+    resolved_at: 2026-08-20
+    resolved_by: "fm-infra 5921a47"
     affects: [OPS-2-06]
+    decision: "6~8분"
     sources:
       - doc: 백엔드공통_장애대응목표와_아키텍처결정.md
         section: "7.1절"
-        value: "3~4분"
+        value: "6~8분"
       - doc: 백엔드공통_무중단배포_롤링.md
         section: "1절"
         value: "6~8분"
+    note: >
+      deploy-capacity 와 같은 뿌리다. 신규를 먼저 띄우는 절차라 시간이 더 든다.
+      부록 A.4 비교표와 A.6 재검토 조건의 3~4분도 함께 고쳤다."
 
   - id: mixed-window
     topic: 구 버전과 신 버전 혼재 구간
-    status: unresolved
+    status: resolved
     since: 2026-08-05
+    resolved_at: 2026-08-20
+    resolved_by: "fm-infra 5921a47"
     affects: [OPS-2-06, CMP-3-01, INF-6-01]
+    decision: "약 1분"
     sources:
       - doc: 백엔드공통_장애대응목표와_아키텍처결정.md
         section: "7.1절"
-        value: "약 2분"
+        value: "약 1분"
       - doc: 백엔드공통_장애대응목표와_아키텍처결정.md
         section: "7.4절"
-        value: "약 3분"
+        value: "약 1분"
       - doc: 백엔드공통_무중단배포_롤링.md
         section: "8절"
         value: "약 1분"
     note: >
-      혼재 구간의 길이는 스키마 확장 후 축소에서 축소를 언제 해도 되는지를 정한다.
-      값이 셋이면 안전한 최소 대기 시간을 정할 수 없다.
+      절차에서 나오는 값이다. 신규가 대상 그룹에 등록된 뒤 스모크 테스트를 거치고
+      구 인스턴스를 종료하면 드레이닝 30초가 걸린다.
+      7.4절의 "배치 주기가 혼재 구간보다 짧으면" 은 배치 전용 인스턴스 분리(INF-05)
+      이전의 전제라 함께 걷어냈다. 배치는 롤링 대상이 아니라 중지 후 교체다.
 
   # 아래는 모순이 아니다. 고칠 대상이 아니라 기록할 대상이다.
   # 기록해 두지 않으면 나중에 점검 항목 문서를 근거로 확정값이 틀렸다며 되돌리는 일이 생긴다.
