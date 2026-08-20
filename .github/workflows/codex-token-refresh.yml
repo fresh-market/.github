@@ -53,6 +53,20 @@ jobs:
             https://auth.openai.com/api/accounts/oauth/token \
             -H 'Content-Type: application/json' -d "$BODY")
 
+          # 응답의 키와 토큰 형태만 남긴다. 값은 남기지 않는다.
+          #
+          # codex login --with-access-token 이 받은 토큰을 JWT 로 파싱하는데,
+          # 이 요청이 돌려준 것이 그 형태가 아니면 "agent identity JWT payload is not valid JSON"
+          # 으로 거절된다. 무엇을 받았는지 모르면 그 원인을 짚을 수 없다.
+          echo "응답 키: $(printf '%s' "$RESP" | jq -rc 'keys')"
+          for k in access_token id_token refresh_token; do
+            V=$(printf '%s' "$RESP" | jq -r --arg k "$k" '.[$k] // empty')
+            if [ -n "$V" ]; then
+              DOTS=$(printf '%s' "$V" | tr -cd '.' | wc -c | tr -d ' ')
+              echo "  $k: ${#V}자, 점 ${DOTS}개$([ "$DOTS" = "2" ] && echo ' (JWT 형태)')"
+            fi
+          done
+
           ACCESS=$(printf '%s' "$RESP" | jq -r '.access_token // empty')
           NEW_REFRESH=$(printf '%s' "$RESP" | jq -r '.refresh_token // empty')
 
