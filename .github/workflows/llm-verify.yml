@@ -18,7 +18,7 @@ on:
         type: string
         default: fresh-market/fm-infra
     secrets:
-      GEMINI_API_KEY:
+      OPENAI_API_KEY:
         required: true
 
 permissions:
@@ -84,6 +84,22 @@ jobs:
           python-version: "3.12"
       - run: pip install --quiet pyyaml
 
+      # 판정 엔진. 버전을 고정한다.
+      #
+      # 에이전트 CLI 는 판올림으로 기본 모델과 출력이 바뀔 수 있어 도구 버전이 곧 판정 기준이다.
+      # 고정하지 않으면 같은 커밋을 다시 돌렸을 때 결과가 달라져도 원인을 짚을 수 없다.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm i -g @openai/codex@0.142.5
+
+      # 로그인은 여기서 한 번만 한다. run.py 는 CLI 가 이미 인증돼 있다고 보고 부른다.
+      # 러너는 일회성이라 자격증명이 잡 종료와 함께 사라진다.
+      - name: Codex 로그인
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: printenv OPENAI_API_KEY | codex login --with-api-key
+
       # --- 5, 6단계: 앵커 규칙 매칭 ---
       # 어떤 규칙이 걸렸는지 로그에 남긴다. 판정은 judge 스텝이 다시 계산한다
       - name: 앵커 규칙 매칭
@@ -117,7 +133,8 @@ jobs:
       - name: 판정
         id: judge
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # 모델을 비우면 CLI 기본값을 쓴다. 고정하려면 여기에 이름을 준다.
+          CODEX_MODEL: ${{ vars.CODEX_MODEL }}
         run: |
           python common/.github/llm-verify/run.py --mode judge \
             --backend target --common common --infra infra \

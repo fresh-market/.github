@@ -21,32 +21,37 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
-import urllib.error
-import urllib.request
 from collections import defaultdict
 from pathlib import Path
 
 import yaml
 
-MODEL = "gemini-2.5-flash"
-ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent"
+# 판정 엔진은 Codex CLI 를 비대화 모드로 부른다.
+#
+# HTTP 를 직접 치지 않고 CLI 를 거치는 이유는 인증과 모델 접근을 CLI 가 맡기 때문이다.
+# 러너는 `codex login --with-api-key` 로 한 번 로그인해 두고, 여기서는 그것을 쓴다.
+# 프롬프트는 stdin 으로 넣고 답은 --output-schema 로 모양을 고정해 -o 파일로 받는다.
+CODEX_BIN = os.environ.get("CODEX_BIN", "codex")
 
-# 사고 토큰이 maxOutputTokens 예산에서 나간다.
-# 묶지 않으면 동적으로 배정되는데, 11만 토큰짜리 프롬프트로 200건을 판정하는 동안
-# 예산을 다 써서 정작 답을 쓸 자리가 남지 않고 finishReason=MAX_TOKENS 로 끝난다.
-# 그러면 항목 전부가 UNJUDGED 가 되므로 게이트가 없는 것과 같다.
-# 8192 를 남기면 출력에 57344 가 남아 300건대를 쓰기에 넉넉하다.
-THINKING_BUDGET = 8192
+# 모델을 비워 두면 Codex 의 기본값을 쓴다.
+#
+# 기본값을 코드에 박지 않는 이유는 모델 이름이 자주 바뀌고, 틀린 이름을 박아 두면
+# 판정이 통째로 실패하기 때문이다. 고정하려면 워크플로에서 CODEX_MODEL 을 준다.
+CODEX_MODEL = os.environ.get("CODEX_MODEL", "")
+
+# 호출 하나의 시간 상한. 에이전트가 여러 턴을 돌 수 있어 HTTP 때보다 넉넉히 준다.
+CALL_TIMEOUT_SEC = 900
 
 # CI 가 판정하는 단계. 1단계가 backend, 2단계가 common + infra 다.
 #
-# CI 는 1단계만 본다. 2단계는 G-LOCAL 이 맡는다.
-# 2단계를 넣으면 호출이 배로 늘어 무료 티어 분당 10회를 한 PR 이 다 쓰고,
-# 정작 판정 대상 코드는 backend 뿐이라 얻는 것에 비해 비용이 크다.
-# 되돌리려면 (1, 2) 로 바꾸면 된다. 항목의 ci_stage 는 그대로 두었다.
+# CI 는 아직 1단계만 본다. 2단계는 G-LOCAL 이 --full 로 맡는다.
+# 근거였던 Gemini 무료 티어의 분당 한도는 엔진을 바꾸면서 사라졌으므로,
+# 이 값은 (1, 2) 로 여는 것을 전제로 남겨 둔다. 항목의 ci_stage 는 그대로다.
 CI_STAGES = (1,)
 
 # 한 호출에 넣는 항목 수.
@@ -474,17 +479,17 @@ def build_prompt(items, diff, anchor_files, absent, docs, conflicts,
     return "\n".join(parts)
 
 
-def call_gemini(api_key, prompt, expected_ids, attempts=3):
+def call_judge(prompt, expected_ids, attempts=3):
     """
     일시적 실패에 재시도한다.
 
-    무료 티어는 RPM 10 이고 503 이 드물지 않다. 재시도가 없으면 한 번의 일시 실패로
-    1단계가 죽고 464건 전부가 UNJUDGED 가 된다. 그건 게이트가 없는 것과 같다.
+    재시도가 없으면 한 번의 일시 실패로 그 단계가 죽고 항목 전부가 UNJUDGED 가 된다.
+    그건 게이트가 없는 것과 같다.
     응답이 왔는데 형식이 어긋난 경우는 재시도하지 않는다. 다시 불러도 같기 때문이다.
     """
     last = None
     for n in range(attempts):
-        result, err = _call_once(api_key, prompt, expected_ids)
+        result, err = _call_once(prompt, expected_ids)
         if result is not None:
             return result, None
         last = err
@@ -497,52 +502,89 @@ def call_gemini(api_key, prompt, expected_ids, attempts=3):
 
 
 def _retryable(err):
-    """429(한도)와 5xx(서버)만 다시 부른다. 400 이나 파싱 실패는 다시 불러도 같다."""
-    return any(s in err for s in ("HTTP 429", "HTTP 500", "HTTP 502", "HTTP 503",
-                                 "HTTP 504", "호출 실패"))
+    """
+    일시적인 것만 다시 부른다.
+
+    스키마를 못 맞췄거나 항목이 빠진 응답은 다시 불러도 같으므로 재시도하지 않는다.
+    한도 초과도 뺀다. 거부된 호출도 사용량에 잡히므로 다시 부르면 판정 없이 예산만 태운다.
+    """
+    return any(s in err for s in ("실행 실패", "시간 초과", "5xx", "timed out",
+                                 "connection", "ECONNRESET", "ETIMEDOUT"))
 
 
-def _call_once(api_key, prompt, expected_ids):
-    body = {
-        "systemInstruction": {"parts": [{"text": SYSTEM}]},
-        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": 0,
-            "responseMimeType": "application/json",
-            "responseSchema": SCHEMA,
-            "maxOutputTokens": 65536,
-            "thinkingConfig": {"thinkingBudget": THINKING_BUDGET},
-        },
-    }
-    req = urllib.request.Request(
-        ENDPOINT.format(MODEL) + f"?key={api_key}",
-        data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=600) as resp:
-            data = json.load(resp)
-    except urllib.error.HTTPError as e:
-        return None, f"HTTP {e.code}: {e.read().decode()[:300]}"
-    except Exception as e:
-        return None, f"호출 실패: {e}"
+def _call_once(prompt, expected_ids):
+    """
+    Codex CLI 를 한 번 부른다.
 
-    cand = (data.get("candidates") or [{}])[0]
-    finish = cand.get("finishReason")
-    if finish not in (None, "STOP"):
-        return None, f"finishReason={finish}"
+    프롬프트는 stdin 으로 넣는다. `codex exec` 는 인자가 없으면 stdin 을 프롬프트로 읽는다.
+    Gemini 의 systemInstruction 자리가 없어 SYSTEM 을 앞에 붙인다.
 
-    try:
-        text = cand["content"]["parts"][0]["text"]
-        results = json.loads(text)["results"]
-    except Exception as e:
-        return None, f"파싱 실패: {e}"
+    샌드박스를 read-only 로 두는 이유는 판정이 파일을 고칠 일이 없기 때문이다.
+    프롬프트에 diff 와 앵커와 기준 문서가 이미 다 들어 있어 저장소를 뒤질 필요도 없다.
+    작업 루트를 빈 임시 디렉터리로 주어 그 사실을 구조로 강제한다.
+    """
+    with tempfile.TemporaryDirectory(prefix="llm-verify-") as tmp:
+        schema_path = Path(tmp) / "schema.json"
+        out_path = Path(tmp) / "last-message.json"
+        schema_path.write_text(json.dumps(SCHEMA), encoding="utf-8")
 
-    usage = data.get("usageMetadata", {})
+        cmd = [CODEX_BIN, "exec",
+               "--sandbox", "read-only",
+               "--cd", tmp,
+               "--skip-git-repo-check",
+               "--ephemeral",
+               "--ignore-user-config",
+               "--color", "never",
+               "--output-schema", str(schema_path),
+               "--output-last-message", str(out_path)]
+        if CODEX_MODEL:
+            cmd += ["--model", CODEX_MODEL]
+
+        try:
+            proc = subprocess.run(cmd, input=SYSTEM + "\n\n" + prompt,
+                                  capture_output=True, text=True,
+                                  timeout=CALL_TIMEOUT_SEC)
+        except subprocess.TimeoutExpired:
+            return None, f"시간 초과 ({CALL_TIMEOUT_SEC}초)"
+        except FileNotFoundError:
+            return None, f"실행 실패: {CODEX_BIN} 를 찾을 수 없다"
+
+        if proc.returncode != 0:
+            tail = (proc.stderr or proc.stdout or "").strip()[-300:]
+            return None, f"실행 실패 (종료 {proc.returncode}): {tail}"
+
+        if not out_path.is_file():
+            return None, "실행 실패: 마지막 메시지 파일이 없다"
+
+        try:
+            results = json.loads(out_path.read_text(encoding="utf-8"))["results"]
+        except Exception as e:
+            return None, f"파싱 실패: {e}"
+
+        usage = _usage_of(proc.stderr, proc.stdout)
+
     seen = {r["id"] for r in results}
     ok = seen == set(expected_ids)
     detail = "" if ok else f"응답 {len(seen)} / 요청 {len(expected_ids)}"
     return {"results": results, "usage": usage, "complete": ok, "detail": detail}, None
+
+
+def _usage_of(*streams):
+    """
+    CLI 가 뱉은 텍스트에서 토큰 사용량을 건져 본다.
+
+    Gemini 는 usageMetadata 를 응답에 실어 줬는데 CLI 에는 그 자리가 없다.
+    출력 형식이 판올림마다 바뀔 수 있으므로 못 찾으면 빈 값을 돌려주고 판정은 계속한다.
+    사용량은 비용을 보기 위한 것이지 판정에 쓰이지 않는다.
+    """
+    keys = ("input", "output", "cached", "total")
+    found = {}
+    for text in streams:
+        for m in re.finditer(r"(\w+)\s*tokens?\W{0,3}([\d,]+)", text or "", re.I):
+            name = m.group(1).lower()
+            if name in keys:
+                found.setdefault(name, int(m.group(2).replace(",", "")))
+    return found
 
 
 # --- 16단계: 필터링과 출력 -------------------------------------------------
@@ -889,9 +931,10 @@ def main():
     conflicts, intentional = conflict_map(
         Path(args.common) / ".github/llm-verify/known-conflicts.yml")
 
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key and not args.dry_run:
-        print("GEMINI_API_KEY 가 없다", file=sys.stderr)
+    # 인증은 CLI 가 맡는다. 여기서는 그 CLI 가 있는지만 본다.
+    # 로그인이 안 되어 있으면 첫 호출이 실패하며 그 사유가 그대로 리포트에 실린다.
+    if not args.dry_run and shutil.which(CODEX_BIN) is None:
+        print(f"{CODEX_BIN} 를 찾을 수 없다. 러너에서 설치와 로그인을 먼저 한다", file=sys.stderr)
         return 1
 
     by_stage = defaultdict(list)
@@ -945,7 +988,7 @@ def main():
             prompt = build_prompt(chunk, diff, anchor_files if stage == 1 else {},
                                   absent, docs, conflicts, intentional,
                                   baseline if stage == 2 else None)
-            resp, err = call_gemini(api_key, prompt, ids)
+            resp, err = call_judge(prompt, ids)
             if err:
                 errs.append(f"{n}/{len(chunks)}: {err}")
                 continue
