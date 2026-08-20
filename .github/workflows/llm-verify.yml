@@ -27,6 +27,14 @@ on:
       infra_repo:
         type: string
         default: fresh-market/fm-infra
+      # 다른 저장소 항목까지 판정한다.
+      #
+      # 끄면 대상 저장소 자신의 항목만 본다. backend PR 이면 backend 275건이고,
+      # common 의 품질 속성과 infra 의 인프라 제약은 아무도 강제로 보지 않는다.
+      # 켜면 492건이 되고 호출이 1회에서 2회로 는다.
+      full:
+        type: boolean
+        default: false
     secrets:
       # 인증 경로가 둘이고 지갑이 다르다. 있는 쪽을 쓴다.
       #
@@ -193,6 +201,7 @@ jobs:
             --backend target --common common --infra infra \
             --base ${{ steps.scope.outputs.base }} \
             --head ${{ steps.scope.outputs.head }} \
+            ${{ inputs.full && '--full' || '' }} \
             --out verify-out.md
 
       # --- 16단계: 출력 ---

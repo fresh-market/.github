@@ -787,6 +787,8 @@ def main():
     # match 전용. 활성 항목 목록을 여기 쓴다. 주지 않으면 쓰지 않는다.
     # --out 과 나누는 이유는 CI 가 --out 을 판정 코멘트에 쓰기 때문이다.
     ap.add_argument("--items-out", default="")
+    ap.add_argument("--full", action="store_true",
+                    help="다른 저장소 항목까지 판정한다. 기본은 대상 저장소 자신의 항목만 본다")
     ap.add_argument("--dry-run", action="store_true",
                     help="LLM 을 부르지 않고 무엇이 활성화되어 어떤 입력이 만들어지는지만 본다")
     args = ap.parse_args()
@@ -914,7 +916,8 @@ def main():
     # 활성에서 아예 빼는 이유는, 남겨 두면 판정하지 않은 것이 UNJUDGED 로 쌓여
     # 담당이 아니어서 안 본 것과 물었는데 답이 안 온 것이 뒤섞이기 때문이다.
     own_source = load_yaml(Path(args.backend) / ".github/llm-verify/items.yml").get("source")
-    deferred_to_local = {i: it for i, it in active.items() if it["repo"] != own_source}
+    deferred_to_local = ({} if args.full
+                         else {i: it for i, it in active.items() if it["repo"] != own_source})
     active = {i: it for i, it in active.items() if i not in deferred_to_local}
 
     if not active:
@@ -944,7 +947,21 @@ def main():
             anchor_files[path] = sliced
             ddl_note = f"{path} {info[0]}/{info[1]}개 테이블"
 
-    docs, missing_docs = collect_docs(active, roots)
+    by_stage = defaultdict(list)
+    for it in active.values():
+        by_stage[it.get("ci_stage", 1)].append(it)
+
+    # 기준 문서를 단계별로 나눠 싣는다.
+    #
+    # 한 덩어리로 모아 두면 build_prompt 가 단계 구분 없이 전부 실어서,
+    # backend 항목만 판정하는 1단계 프롬프트에 common 과 infra 문서가 함께 붙는다.
+    # --full 을 켜면 그 낭비가 1단계에서만 5만 자 가까이 된다.
+    docs_by_stage, missing_docs = {}, []
+    for st, items in by_stage.items():
+        d, miss = collect_docs({i["id"]: i for i in items}, roots)
+        docs_by_stage[st] = d
+        missing_docs += [m for m in miss if m not in missing_docs]
+
     conflicts, intentional = conflict_map(
         Path(args.common) / ".github/llm-verify/known-conflicts.yml")
 
@@ -953,10 +970,6 @@ def main():
     if not args.dry_run and shutil.which(CODEX_BIN) is None:
         print(f"{CODEX_BIN} 를 찾을 수 없다. 러너에서 설치와 로그인을 먼저 한다", file=sys.stderr)
         return 1
-
-    by_stage = defaultdict(list)
-    for it in active.values():
-        by_stage[it.get("ci_stage", 1)].append(it)
 
     if args.dry_run:
         print(f"매칭 규칙   {', '.join(r['id'] for r in rules)}"
@@ -971,23 +984,27 @@ def main():
         print(f"  저장소별  {dict(by_repo)}")
         print(f"앵커 파일   읽음 {len(anchor_files)}, 부재 {len(absent)}, 실패 {len(failed)}"
               + (f"  (스키마 {ddl_note})" if ddl_note else ""))
-        print(f"기준 문서   {len(docs)}건" + (f", 못 읽음 {missing_docs}" if missing_docs else ""))
+        print("기준 문서   " + ", ".join(f"{st}단계 {len(d)}건" for st, d in sorted(docs_by_stage.items()))
+              + (f", 못 읽음 {missing_docs}" if missing_docs else ""))
         print(f"모순 유보   {len([i for i in active if i in conflicts])}건")
         eff = [i for i in active if i in intentional and i not in conflicts]
         shadow = [i for i in active if i in intentional and i in conflicts]
         print(f"의도된 이탈 {len(eff)}건"
               + (f" (모순으로 가려진 것 {len(shadow)}건: {', '.join(shadow)})" if shadow else ""))
-        for s in CI_STAGES:
+        for s in ((1, 2) if args.full else CI_STAGES):
             batch = by_stage.get(s, [])
             if batch:
                 p = build_prompt(batch, diff, anchor_files if s == 1 else {},
-                                 absent, docs, conflicts, intentional)
+                                 absent, docs_by_stage.get(s, {}), conflicts, intentional)
                 print(f"프롬프트 {s}단계  {len(p):,}자 (대략 {len(p)//2:,} 토큰)")
         return 0
 
+    # --full 이면 2단계까지 본다. 아니면 상수가 정한 범위만 본다
+    stages_to_run = (1, 2) if args.full else CI_STAGES
+
     results, stages = [], {}
     stage1_ok = True
-    for stage in CI_STAGES:
+    for stage in stages_to_run:
         batch = by_stage.get(stage, [])
         if not batch:
             continue
@@ -1000,7 +1017,7 @@ def main():
         for n, chunk in enumerate(chunks, 1):
             ids = [i["id"] for i in chunk]
             prompt = build_prompt(chunk, diff, anchor_files if stage == 1 else {},
-                                  absent, docs, conflicts, intentional)
+                                  absent, docs_by_stage.get(stage, {}), conflicts, intentional)
             resp, err = call_judge(prompt, ids)
             if err:
                 errs.append(f"{n}/{len(chunks)}: {err}")
