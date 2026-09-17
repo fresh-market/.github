@@ -90,7 +90,9 @@ uk_mc_coupon_member   1인 1매
 
 ---
 
-## 왜 신선식품 커머스인가
+## 신선식품 커머스
+
+### 도메인의 특징
 
 신선식품은 **안 팔리면 재고가 남는 것이 아니라 폐기가 된다.** 같은 상품이라도 입고 차수마다 소비기한이 다르고 그 차이가 그대로 판매 가능 기간이 된다. 그래서 이 도메인에는 성격이 다른 두 문제가 동시에 있다.
 
@@ -101,7 +103,7 @@ uk_mc_coupon_member   1인 1매
 
 **선착순 쿠폰이 두 문제를 하나로 잇는다.** 배치가 소비기한이 임박한 로트를 임박순 -> 판매율 저조순으로 고른다. 그 로트가 30% 정률 할인 쿠폰의 대상이 된다. **캠페인 대상 선정이 배치의 산출물이면서 이벤트의 입력이 된다.**
 
-## 커머스 경로와 캠페인 경로
+### 커머스 경로와 캠페인 경로
 
 **커머스는 로트를 소진하고 캠페인은 남은 로트를 대상으로 삼는다.**
 
@@ -128,7 +130,7 @@ uk_mc_coupon_member   1인 1매
 
 **팀은 회수 배치와 검증 배치를 섞지 않는다.** 회수 배치는 고치고 검증 배치는 잰다. 검증이 고치면 재실행 결과가 달라져 요구사항을 위반한다.
 
-## 도메인 13개, 3계층
+### 도메인 13개, 3계층
 
 팀이 DDL 32개 테이블을 13개 도메인으로 나눴다. **베이스 패키지의 직계 하위 패키지가 곧 도메인**이다.
 
@@ -156,6 +158,8 @@ L0   member  product  admin                                        아무것도 
 | [redis-promotion-rebuild.md](https://github.com/fresh-market/fm-backend/blob/main/docs/coupon/redis-promotion-rebuild.md) | 재건이 무엇이고 어떤 순서로 도나 |
 | [coupon-failure.md](https://github.com/fresh-market/fm-backend/blob/main/docs/coupon/coupon-failure.md) | 발급이 장애에 어떻게 반응하나 |
 | [warmup.md](https://github.com/fresh-market/fm-backend/blob/main/docs/coupon/warmup.md) | 워밍업이 무엇을 데우고 무엇을 못 데우나 |
+
+---
 
 ## 팀
 
