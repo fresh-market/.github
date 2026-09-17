@@ -157,7 +157,6 @@ L0   member  product  admin                                        아무것도 
 | [coupon-redis-keys.md](https://github.com/fresh-market/fm-backend/blob/main/docs/coupon/coupon-redis-keys.md) | 발급이 쓰는 Redis 키 여섯 |
 | [redis-promotion-rebuild.md](https://github.com/fresh-market/fm-backend/blob/main/docs/coupon/redis-promotion-rebuild.md) | 재건이 무엇이고 어떤 순서로 도나 |
 | [coupon-failure.md](https://github.com/fresh-market/fm-backend/blob/main/docs/coupon/coupon-failure.md) | 발급이 장애에 어떻게 반응하나 |
-| [warmup.md](https://github.com/fresh-market/fm-backend/blob/main/docs/coupon/warmup.md) | 워밍업이 무엇을 데우고 무엇을 못 데우나 |
 
 ---
 
