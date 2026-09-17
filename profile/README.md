@@ -10,8 +10,6 @@
 Java 21 / Spring Boot 4.0.5 / MySQL 8.4 / Valkey(Redis) 9.0 / AWS (Terraform)
 기간 2026-07-31 ~ 2026-08-31, 5명
 
-**저장소는 셋이다.** [fm-backend](https://github.com/fresh-market/fm-backend) 가 본론이고, [fm-infra](https://github.com/fresh-market/fm-infra) 가 Terraform 과 부하 시험 기록을, [.github](https://github.com/fresh-market/.github) 가 품질 기준 219건과 판정 엔진을 갖는다.
-
 ---
 
 ## 선착순 쿠폰 이벤트 
