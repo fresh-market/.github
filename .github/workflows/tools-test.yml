@@ -1,0 +1,33 @@
+# 판정 도구의 회귀 시험
+#
+# run.py 는 세 저장소의 G-PR 을 전부 돌리는데 여태 시험이 없었다.
+# llm-verify.yml 이 도구를 일부러 고정하지 않고 기본 브랜치에서 최신을 가져오므로,
+# 여기 들어온 버그는 다음 판정부터 세 저장소에 동시에 적용된다.
+#
+# 그래서 이 저장소의 도구를 고치는 PR 은 이 잡을 지나야 한다.
+# 판정 엔진을 안 부르므로 빠르고 비용이 없다.
+
+name: 도구 시험
+
+on:
+  pull_request:
+    paths:
+      - ".github/llm-verify/*.py"
+      - ".github/workflows/tools-test.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # run.py 가 yaml 을 읽는다. 시험 자신은 표준 라이브러리만 쓴다
+      - run: pip install --quiet pyyaml
+
+      # 시험이 임시 저장소를 만들어 돌린다. 신원은 그 저장소 안에서 스스로 세운다
+      - name: 시험
+        run: python3 .github/llm-verify/test_run.py
