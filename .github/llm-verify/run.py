@@ -191,7 +191,7 @@ def active_items(rules, registries):
 
 # --- 9~12단계: 입력 수집 ---------------------------------------------------
 
-def read_files(root, patterns, limit_bytes=400_000):
+def read_files(root, patterns, limit_bytes=400_000, priority=()):
     """
     앵커 파일을 읽는다. 결과를 셋으로 나눈다.
 
@@ -205,6 +205,16 @@ def read_files(root, patterns, limit_bytes=400_000):
     git 이 추적하지 않는 파일은 읽지 않는다. QueryDSL 이 build/generated 에 만든 Q클래스가
     앵커 글롭에 걸리는데, CI 는 새로 체크아웃해 build 가 없고 로컬은 빌드한 뒤라 있다.
     그대로 두면 같은 커밋인데 판정 입력이 로컬과 CI 에서 달라진다.
+
+    priority 는 이 PR 이 건드린 앵커 파일이다. 예산을 이쪽부터 쓴다.
+
+    부르는 쪽이 글롭을 정렬해 넘기므로 패턴 순서가 알파벳순이다. 그대로 두면 이번 PR 과
+    무관한 파일이 자리를 먼저 먹는다. 2026-09-24 실측에서 entity 와 repository 글롭이
+    예산 40만을 거의 다 채워 service 글롭에 21,535 바이트만 남았고, 쿠폰 서비스를 고친
+    PR 인데 정작 그 파일이 빠지고 admin 파일이 예산을 썼다.
+
+    priority 는 부재 판정에 안 쓰이므로 absent 에 넣지 않는다. 글롭이 아니라 경로라서
+    "이 패턴에 해당하는 파일이 없다" 라는 뜻을 만들 수 없기 때문이다.
     """
     root = Path(root)
     try:
@@ -212,6 +222,32 @@ def read_files(root, patterns, limit_bytes=400_000):
     except RuntimeError:
         tracked = None
     got, absent, failed, total = {}, [], [], 0
+
+    def take(f):
+        """예산 안이면 읽어 담는다."""
+        nonlocal total
+        rel = str(f.relative_to(root))
+        if rel in got:
+            return
+        try:
+            text = f.read_text(encoding="utf-8", errors="replace")
+        except OSError as e:
+            failed.append(f"{rel} ({e})")
+            return
+        if total + len(text) > limit_bytes:
+            failed.append(f"{rel} (용량 상한 초과)")
+            return
+        got[rel] = text
+        total += len(text)
+
+    for rel in priority:
+        f = root / rel
+        if not f.is_file():
+            continue
+        if tracked is not None and rel not in tracked:
+            continue
+        take(f)
+
     for pattern in patterns:
         hits = [f for f in sorted(root.glob(pattern)) if f.is_file()]
         if tracked is not None:
@@ -220,19 +256,7 @@ def read_files(root, patterns, limit_bytes=400_000):
             absent.append(pattern)
             continue
         for f in hits:
-            rel = str(f.relative_to(root))
-            if rel in got:
-                continue
-            try:
-                text = f.read_text(encoding="utf-8", errors="replace")
-            except OSError as e:
-                failed.append(f"{rel} ({e})")
-                continue
-            if total + len(text) > limit_bytes:
-                failed.append(f"{rel} (용량 상한 초과)")
-                continue
-            got[rel] = text
-            total += len(text)
+            take(f)
     return got, absent, failed
 
 
@@ -931,7 +955,11 @@ def main():
     added = added_lines(diff)
 
     anchor_patterns = sorted({p for r in rules for p in (r.get("anchors") or [])})
-    anchor_files, absent, failed = read_files(args.backend, anchor_patterns)
+
+    # 이번 PR 이 건드린 앵커 파일에 예산을 먼저 준다. 근거는 read_files 의 docstring 에 있다
+    changed_anchors = [f for f in files if matches(f, anchor_patterns)]
+    anchor_files, absent, failed = read_files(
+        args.backend, anchor_patterns, priority=changed_anchors)
 
     # 스키마는 바뀐 엔티티가 쓰는 테이블만 남긴다. 앵커 분량의 대부분이 이 파일이다.
     # 어느 테이블인지 알 수 없으면 통째로 둔다.
