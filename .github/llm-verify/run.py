@@ -47,11 +47,16 @@ CODEX_MODEL = os.environ.get("CODEX_MODEL", "")
 # 호출 하나의 시간 상한. 에이전트가 여러 턴을 돌 수 있어 HTTP 때보다 넉넉히 준다.
 CALL_TIMEOUT_SEC = 900
 
-# CI 가 판정하는 단계. 1단계가 backend, 2단계가 common + infra 다.
+# --full 을 안 줬을 때 판정하는 단계. 1단계가 backend, 2단계가 common + infra 다.
 #
-# CI 는 아직 1단계만 본다. 2단계는 G-LOCAL 이 --full 로 맡는다.
-# 근거였던 Gemini 무료 티어의 분당 한도는 엔진을 바꾸면서 사라졌으므로,
-# 이 값은 (1, 2) 로 여는 것을 전제로 남겨 둔다. 항목의 ci_stage 는 그대로다.
+# CI 는 이 값을 안 쓴다. backend 의 pr-gate.yml 이 full: true 를 넘기고, 그러면
+# stages_to_run 이 (1, 2) 로 열려 이 상수를 덮는다. 실제로 CI 는 두 단계를 다 본다.
+#
+# 그래서 이 값이 실제로 쓰이는 곳은 --full 없이 부르는 경우뿐이다. G-LOCAL 이 기본으로
+# 그렇게 부르고, 그때는 대상 저장소 자신의 항목만 보므로 backend 에서는 1단계가 전부다.
+#
+# (1,) 로 좁혀 둔 근거는 Gemini 무료 티어의 분당 한도였다. 엔진을 바꾸면서 그 근거는
+# 사라졌으나, --full 이 이미 두 단계를 열고 있어 이 값을 넓힐 이유가 따로 없다.
 CI_STAGES = (1,)
 
 # 한 호출에 넣는 항목 수. 단계당 한 번에 끝나도록 크게 잡는다.

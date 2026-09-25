@@ -29,9 +29,12 @@ on:
         default: fresh-market/fm-infra
       # 다른 저장소 항목까지 판정한다.
       #
-      # 끄면 대상 저장소 자신의 항목만 본다. backend PR 이면 backend 275건이고,
+      # 끄면 대상 저장소 자신의 항목만 본다. backend PR 이면 backend 276건이고,
       # common 의 품질 속성과 infra 의 인프라 제약은 아무도 강제로 보지 않는다.
-      # 켜면 492건이 되고 호출이 1회에서 2회로 는다.
+      # 켜면 615건이 되고 호출이 1회에서 2회로 는다.
+      #
+      # 켜면 run.py 의 CI_STAGES 도 함께 덮여 두 단계가 다 열린다. backend 의
+      # pr-gate.yml 이 켜고 있으므로 CI 는 이미 2단계까지 판정한다.
       full:
         type: boolean
         default: false
