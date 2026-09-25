@@ -435,6 +435,30 @@ class FailureReasonEnvelopeTest(unittest.TestCase):
         reason = run._failure_reason(proc)
         self.assertIn("알 수 없는 실패", reason)
 
+    def test_신뢰_거절도_사유가_남는다(self):
+        """
+        2026-09-25 의 첫 Gemini 실행이 이것으로 판정 50건을 통째로 잃었다.
+
+        CLI 가 --output-format json 을 받고도 이 오류는 봉투에 안 싣고 stderr 로 내보내며
+        종료 코드 55 로 끝난다. 꼬리를 남기는 길이 없으면 원인이 통째로 사라진다.
+        """
+        proc = self.Proc(
+            stderr="CLI is not running in a trusted directory. To proceed, "
+                   "either use `--skip-trust`, set the "
+                   "`GEMINI_CLI_TRUST_WORKSPACE=true` environment variable",
+            returncode=55)
+        reason = run._failure_reason(proc)
+        self.assertIn("trusted directory", reason)
+        self.assertIn("--skip-trust", reason)
+
+    def test_ANSI_색_코드를_지운다(self):
+        """이 문자열은 PR 코멘트로 그대로 나간다. 마크다운이 색 코드를 글자로 보여 준다."""
+        proc = self.Proc(stderr="\x1b[31m실패했다\x1b[0m")
+        reason = run._failure_reason(proc)
+        self.assertIn("실패했다", reason)
+        self.assertNotIn("\x1b", reason)
+        self.assertNotIn("[0m", reason)
+
 
 if __name__ == "__main__":
     sys.exit(0 if unittest.main(exit=False).result.wasSuccessful() else 1)

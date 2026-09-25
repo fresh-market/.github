@@ -542,6 +542,9 @@ def _failure_reason(proc):
 
     어느 쪽에서도 못 찾으면 그때 stderr 와 stdout 의 꼬리를 함께 붙인다. 둘 중 하나만
     남기면 이번과 같은 일이 되풀이된다.
+
+    ANSI 제어 문자를 지운다. 이 문자열은 PR 코멘트로 그대로 나가는데, 마크다운은 그것을
+    렌더하지 않고 글자로 보여 줘서 사유 끝에 찌꺼기가 붙는다.
     """
     err = (_envelope_of(proc.stdout) or {}).get("error")
     if isinstance(err, dict) and err.get("message"):
@@ -572,8 +575,8 @@ def _failure_reason(proc):
                 uniq.append(m)
         return " / ".join(uniq)[:500]
 
-    e = (proc.stderr or "").strip()[-300:]
-    out = (proc.stdout or "").strip()[-300:]
+    e = ANSI_RE.sub("", proc.stderr or "").strip()[-300:]
+    out = ANSI_RE.sub("", proc.stdout or "").strip()[-300:]
     parts = [p for p in (f"stderr: {e}" if e else "", f"stdout: {out}" if out else "") if p]
     return " | ".join(parts) or "출력이 없다"
 
@@ -607,6 +610,9 @@ def _envelope_of(stdout):
 """
 모델이 답을 코드 펜스로 감싸는 경우가 흔하다. 앞뒤 펜스를 벗기려고 쓴다.
 """
+# 실패 사유가 PR 코멘트로 나가므로 CLI 가 섞어 찍는 색 코드를 지운다.
+ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
 FENCE_RE = re.compile(r"^\s*```(?:json)?\s*(.*?)\s*```\s*$", re.S)
 
 
@@ -673,11 +679,17 @@ def _call_once(prompt, expected_ids):
     "JSON 객체 하나만" 과 정면으로 싸워서, 모양이 깨질 위험을 읽기 제한과 맞바꾸는 셈이 된다.
     읽기 제한은 빈 작업 루트가 이미 맡고 있으므로 그 거래를 하지 않는다.
 
+    --skip-trust 를 준다. CLI 는 신뢰 목록에 없는 디렉터리에서 종료 코드 55 로 거절한다.
+    2026-09-25 의 첫 실행이 그것으로 판정 50건을 통째로 잃었다. 이 플래그가 하는 일은
+    GEMINI_CLI_TRUST_WORKSPACE 를 세우는 것뿐이고, 신뢰가 여는 것은 작업 루트의 프로젝트
+    설정과 확장을 CLI 가 읽어 주는 것이다. 우리 작업 루트는 방금 만든 빈 임시 디렉터리라
+    읽을 것이 없다. 그래서 여기서 신뢰해도 CLI 가 얻는 권한이 없다.
+
     Codex 와 달리 스키마를 강제할 방법이 없다. --output-schema 에 해당하는 플래그가 CLI 에
     없어서, 모양은 프롬프트로 요구하고 검증은 _parse_results 가 한다.
     """
     with tempfile.TemporaryDirectory(prefix="llm-verify-") as tmp:
-        cmd = [GEMINI_BIN, "--output-format", "json"]
+        cmd = [GEMINI_BIN, "--output-format", "json", "--skip-trust"]
         if GEMINI_MODEL:
             cmd += ["--model", GEMINI_MODEL]
 
