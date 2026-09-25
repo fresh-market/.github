@@ -8,6 +8,8 @@ run.py 의 회귀 시험.
 보인다. 그래서 이 파일이 그 함수의 계약을 못 박는다.
 
 read_files 를 먼저 덮는다. 입출력이 순수하고 파일 시스템만 읽어 시험하기 쉽다.
+_failure_reason 도 같은 이유로 덮는다. 판정이 실패했을 때 사람이 원인을 볼 수 있느냐가
+게이트의 값어치를 좌우하는데, 그것 역시 한 번 조용히 망가진 적이 있다.
 
     python3 .github/llm-verify/test_run.py
 """
@@ -164,6 +166,53 @@ class ReadFilesTest(unittest.TestCase):
         got, _, failed = self.read(["docs/*.md"], priority=["docs/설계문서.md"])
         self.assertIn("docs/설계문서.md", got)
         self.assertEqual(failed, [])
+
+
+class FailureReasonTest(unittest.TestCase):
+    """
+    판정이 실패했을 때 사람이 읽을 이유를 만든다.
+
+    2026-09-24 회차에서 판정이 383건 전부 UNJUDGED 로 끝났는데 보고서에 남은 것이
+    "Reading prompt from stdin..." 뿐이었다. CLI 의 진행 안내다. 진짜 이유는 --json 이
+    stdout 에 실어 준 이벤트에 있었는데 그쪽을 안 봐서 원인을 아무도 못 짚었다.
+    """
+
+    class Proc:
+        def __init__(self, stdout="", stderr="", returncode=1):
+            self.stdout, self.stderr, self.returncode = stdout, stderr, returncode
+
+    def test_stdout_의_오류_이벤트를_읽는다(self):
+        proc = self.Proc(
+            stdout='{"type":"thread.started"}\n{"type":"error","message":"컨텍스트 초과"}',
+            stderr="Reading prompt from stdin...")
+        self.assertEqual(run._failure_reason(proc), "컨텍스트 초과")
+
+    def test_stderr_에_이유가_없어도_잃지_않는다(self):
+        """이것이 이 클래스의 핵심이다. stderr 만 보면 원인이 통째로 사라진다."""
+        proc = self.Proc(
+            stdout='{"type":"turn.failed","error":{"message":"토큰 한도"}}',
+            stderr="Reading prompt from stdin...")
+        self.assertIn("토큰 한도", run._failure_reason(proc))
+        self.assertNotIn("Reading prompt", run._failure_reason(proc))
+
+    def test_같은_이유가_두_번_와도_한_번만_적는다(self):
+        proc = self.Proc(stdout=(
+            '{"type":"error","message":"같은 이유"}\n'
+            '{"type":"turn.failed","error":{"message":"같은 이유"}}'))
+        self.assertEqual(run._failure_reason(proc), "같은 이유")
+
+    def test_구조화된_이벤트가_없으면_양쪽을_함께_남긴다(self):
+        proc = self.Proc(stdout="평범한 출력", stderr="평범한 오류")
+        reason = run._failure_reason(proc)
+        self.assertIn("평범한 오류", reason)
+        self.assertIn("평범한 출력", reason)
+
+    def test_JSON_이_아닌_줄이_섞여도_안_터진다(self):
+        proc = self.Proc(stdout='로그 한 줄\n{ 깨진 json\n{"type":"error","message":"진짜"}')
+        self.assertEqual(run._failure_reason(proc), "진짜")
+
+    def test_출력이_아예_없으면_그렇게_말한다(self):
+        self.assertEqual(run._failure_reason(self.Proc()), "출력이 없다")
 
 
 if __name__ == "__main__":

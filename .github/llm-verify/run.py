@@ -518,6 +518,49 @@ def _retryable(err):
                                  "ECONNRESET", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN"))
 
 
+def _failure_reason(proc):
+    """
+    CLI 가 실패했을 때 사람이 읽을 이유를 만든다.
+
+    stdout 을 먼저 본다. --json 으로 도는 CLI 가 진짜 이유를 거기에 이벤트로 싣기 때문이다.
+
+        {"type":"error","message":"..."}
+        {"type":"turn.failed","error":{"message":"..."}}
+
+    stderr 만 보면 안 된다. 거기에는 "Reading prompt from stdin..." 같은 진행 안내만 남고
+    이유가 없는 경우가 있다. 2026-09-24 회차에서 판정이 383건 전부 UNJUDGED 로 끝났는데,
+    보고서에 남은 것이 그 진행 안내뿐이라 원인을 아무도 못 짚었다.
+
+    구조화된 이벤트를 못 찾으면 그때 stderr 와 stdout 의 꼬리를 함께 붙인다. 둘 중 하나만
+    남기면 이번과 같은 일이 되풀이된다.
+    """
+    events = []
+    for line in (proc.stdout or "").splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        msg = ev.get("message") or (ev.get("error") or {}).get("message")
+        if msg and ev.get("type") in ("error", "turn.failed"):
+            events.append(msg)
+    if events:
+        # 같은 이유가 error 와 turn.failed 로 두 번 오는 것이 흔하다
+        seen, uniq = set(), []
+        for m in events:
+            if m not in seen:
+                seen.add(m)
+                uniq.append(m)
+        return " / ".join(uniq)[:500]
+
+    err = (proc.stderr or "").strip()[-300:]
+    out = (proc.stdout or "").strip()[-300:]
+    parts = [p for p in (f"stderr: {err}" if err else "", f"stdout: {out}" if out else "") if p]
+    return " | ".join(parts) or "출력이 없다"
+
+
 def _call_once(prompt, expected_ids):
     """
     Codex CLI 를 한 번 부른다.
@@ -562,8 +605,7 @@ def _call_once(prompt, expected_ids):
             return None, f"알 수 없는 모델 이름: {CODEX_MODEL}"
 
         if proc.returncode != 0:
-            tail = (proc.stderr or proc.stdout or "").strip()[-300:]
-            return None, f"실행 실패 (종료 {proc.returncode}): {tail}"
+            return None, f"실행 실패 (종료 {proc.returncode}): {_failure_reason(proc)}"
 
         if not out_path.is_file():
             return None, "실행 실패: 마지막 메시지 파일이 없다"
