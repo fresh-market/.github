@@ -4,12 +4,21 @@
 # llm-verify.yml 이 도구를 일부러 고정하지 않고 기본 브랜치에서 최신을 가져오므로,
 # 여기 들어온 버그는 다음 판정부터 세 저장소에 동시에 적용된다.
 #
-# 그래서 이 저장소의 도구를 고치는 PR 은 이 잡을 지나야 한다.
+# 그래서 이 저장소의 도구를 고치면 이 잡을 지나야 한다.
 # 판정 엔진을 안 부르므로 빠르고 비용이 없다.
+#
+# push 에도 건다. 이 저장소는 PR 없이 main 에 직접 올리는 곳이라 pull_request 만 걸어
+# 두면 실제로 도구를 고치는 경로가 게이트를 통째로 지나친다. 2026-09-25 의 Gemini CLI
+# 전환이 그렇게 지나갔다. 사후에 막는 잡이라도 고장을 다음 판정 전에 알려 준다.
 
 name: 도구 시험
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/llm-verify/*.py"
+      - ".github/workflows/tools-test.yml"
   pull_request:
     paths:
       - ".github/llm-verify/*.py"
