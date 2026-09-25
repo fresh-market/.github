@@ -51,20 +51,6 @@ on:
         required: false
       OPENAI_API_KEY:
         required: false
-      # 과도기 선언이다. 판정 엔진이 Gemini 였을 때 부르던 이름이고 지금은 쓰지 않는다.
-      #
-      # 2026-09-25 에 Gemini CLI 로 옮겼다가 같은 날 되돌렸다. 되돌린 이유는 지갑이다.
-      # 갈아탄 근거가 Code Assist 개인 등급이었는데 Google 이 그 등급을 이 클라이언트에서
-      # 닫았고, 남은 무료 경로인 AI Studio Free 등급은 일일 한도가 이 워크로드를 못 버틴다.
-      #
-      # 선언을 남기는 이유는 이름을 넘기는 pr-gate.yml 이 아직 여럿 살아 있어서다. develop 이
-      # 그 사이 이 이름으로 한 번 병합됐고, 그때 갈라져 나온 브랜치들이 그대로 들고 있다.
-      # 선언을 지우면 "선언되지 않은 시크릿" 으로 그 PR 들의 게이트가 통째로 죽는다.
-      # 그 브랜치들이 모두 닫히거나 리베이스되면 이 네 줄을 지운다.
-      GEMINI_API_KEY:
-        required: false
-      GEMINI_CREDS_JSON:
-        required: false
 
 permissions:
   contents: read
