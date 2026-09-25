@@ -31,22 +31,18 @@ from pathlib import Path
 
 import yaml
 
-# 판정 엔진은 Gemini CLI 를 비대화 모드로 부른다.
+# 판정 엔진은 Codex CLI 를 비대화 모드로 부른다.
 #
 # HTTP 를 직접 치지 않고 CLI 를 거치는 이유는 인증과 모델 접근을 CLI 가 맡기 때문이다.
-# 러너가 자격증명을 먼저 놓고, 여기서는 그것을 쓴다.
-#
-# Codex CLI 에서 옮겨 왔다. 옮긴 이유는 한도의 단위다. Codex 는 ChatGPT 구독의 사용량
-# 한도를 쓰는데 이 판정은 호출이 드물고 하나가 무거워서(약 17만 토큰) 그 한도를 빨리
-# 태운다. 2026-09-24 에 소진돼 판정이 383건 전부 UNJUDGED 로 끝났고 복구가 4주 뒤였다.
-# Gemini CLI 는 요청 수로 끊어(구글 계정 무료 등급 분당 60, 하루 1,000) 이 워크로드에 맞는다.
-GEMINI_BIN = os.environ.get("GEMINI_BIN", "gemini")
+# 러너는 `codex login --with-api-key` 로 한 번 로그인해 두고, 여기서는 그것을 쓴다.
+# 프롬프트는 stdin 으로 넣고 답은 --output-schema 로 모양을 고정해 -o 파일로 받는다.
+CODEX_BIN = os.environ.get("CODEX_BIN", "codex")
 
-# 모델을 비워 두면 CLI 의 기본값을 쓴다.
+# 모델을 비워 두면 Codex 의 기본값을 쓴다.
 #
 # 기본값을 코드에 박지 않는 이유는 모델 이름이 자주 바뀌고, 틀린 이름을 박아 두면
-# 판정이 통째로 죽기 때문이다. 고정하려면 워크플로에서 GEMINI_MODEL 을 준다.
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "")
+# 판정이 통째로 실패하기 때문이다. 고정하려면 워크플로에서 CODEX_MODEL 을 준다.
+CODEX_MODEL = os.environ.get("CODEX_MODEL", "")
 
 # 호출 하나의 시간 상한. 에이전트가 여러 턴을 돌 수 있어 HTTP 때보다 넉넉히 준다.
 CALL_TIMEOUT_SEC = 900
@@ -407,26 +403,41 @@ SYSTEM = """너는 웹 백엔드 코드 리뷰어다. 주어진 점검 항목 �
 9. reason 과 fix 는 한국어로 각각 한 문장씩 쓴다.
    다만 항목 ID, verdict, 파일 경로, 클래스명, 메서드명, 설정 키와 값은 원문 그대로 둔다.
    번역하면 검색과 대조가 깨진다.
-10. 첨부된 것만으로 판정한다. 도구로 저장소를 뒤지지 않는다. 작업 디렉터리는 비어 있고
-   판정에 필요한 diff 와 앵커 파일과 기준 문서는 아래에 전문이 붙어 있다.
-
-출력 형식
-아래 모양의 JSON 객체 하나만 답한다. 설명, 머리말, 코드 펜스를 붙이지 않는다.
-
-{"results": [
-  {"id": "SEC-1-01", "verdict": "OK", "file": null, "line": null, "reason": "...", "fix": null},
-  {"id": "DPB-5-01", "verdict": "VIOLATION", "file": "src/main/java/...", "line": 42,
-   "reason": "...", "fix": "..."}
-]}
-
-verdict 는 VIOLATION, OK, NOT_APPLICABLE, INSUFFICIENT_EVIDENCE, CONFLICTING_BASELINE
-다섯 중 하나다. 여섯 필드를 항상 모두 넣고, 해당 없는 것은 null 로 둔다.
 """
 
+# 구조화 출력 스키마.
+#
+# 엄격 모드라 객체마다 additionalProperties 를 false 로 두고 모든 속성을 required 에 넣어야 한다.
+# 넣지 않으면 호출이 400 으로 거절된다. 실제로 그 오류로 판정이 통째로 죽은 적이 있다.
+#   Invalid schema for response_format: 'additionalProperties' is required to be supplied and to be false
+#
+# 그래서 "선택 필드" 를 required 에서 빼는 방식이 안 된다. 대신 null 을 허용해 같은 뜻을 만든다.
+# 위반이 아닌 항목은 file, line, reason, fix 를 null 로 답한다.
+SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "results": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "id": {"type": "string"},
+                    "verdict": {"type": "string", "enum": VERDICTS},
+                    "file": {"type": ["string", "null"]},
+                    "line": {"type": ["integer", "null"]},
+                    "reason": {"type": ["string", "null"]},
+                    "fix": {"type": ["string", "null"]},
+                },
+                "required": ["id", "verdict", "file", "line", "reason", "fix"],
+            },
+        }
+    },
+    "required": ["results"],
+}
 
-# 구조화 출력 스키마는 여기에 두지 않는다.
-# Gemini CLI 에는 Codex 의 --output-schema 에 해당하는 플래그가 없어서, 모양을 강제할 자리가
-# 프롬프트뿐이다. 위 SYSTEM 의 "출력 형식" 절이 그 자리이고 검증은 _parse_results 가 한다.
+
 def build_prompt(items, diff, anchor_files, absent, docs, conflicts,
                  intentional=None):
     intentional = intentional or {}
@@ -481,7 +492,7 @@ def call_judge(prompt, expected_ids, attempts=3):
 
     재시도가 없으면 한 번의 일시 실패로 그 단계가 죽고 항목 전부가 UNJUDGED 가 된다.
     그건 게이트가 없는 것과 같다.
-    무엇을 다시 부를지는 _retryable 이 정한다.
+    응답이 왔는데 형식이 어긋난 경우는 재시도하지 않는다. 다시 불러도 같기 때문이다.
     """
     last = None
     for n in range(attempts):
@@ -489,7 +500,7 @@ def call_judge(prompt, expected_ids, attempts=3):
         if result is not None:
             return result, None
         last = err
-        if n == attempts - 1 or not _retryable(err, n):
+        if not _retryable(err) or n == attempts - 1:
             return None, last
         wait = 2 ** n * 5          # 5초, 10초
         print(f"  재시도 {n + 1}/{attempts - 1} ({err}). {wait}초 대기", file=sys.stderr)
@@ -497,41 +508,30 @@ def call_judge(prompt, expected_ids, attempts=3):
     return None, last
 
 
-def _retryable(err, n):
+def _retryable(err):
     """
-    다시 부를 값이 있는 것만 다시 부른다. n 은 0부터 세는 시도 번호다.
+    일시적인 것만 다시 부른다.
 
-    네트워크와 시간 초과는 끝까지 다시 부른다. 다시 부를 이유가 분명하다.
+    스키마를 못 맞췄거나 항목이 빠진 응답은 다시 불러도 같으므로 재시도하지 않는다.
+    한도 초과도 뺀다. 거부된 호출도 사용량에 잡히므로 다시 부르면 판정 없이 예산만 태운다.
 
-    모양이 깨진 응답은 한 번만 다시 부른다. Codex 시절에는 서버가 --output-schema 로 모양을
-    강제해서, 어긋났다면 요청 자체가 틀린 것이었고 다시 불러도 같은 400 이 왔다. 실제로 그
-    오류에 재시도 세 번을 태운 적이 있다. Gemini CLI 에는 그 플래그가 없어 모양을 프롬프트로만
-    요구하므로, 이제 어긋남은 요청의 잘못이 아니라 생성의 흔들림이다. 그래서 한 번은 값이 있다.
-
-    두 번은 값이 없다. 프롬프트가 50만 자라 한 번 더 부르는 값이 작지 않고, 두 번 연속
-    어긋났다면 프롬프트가 요구하는 모양 자체를 손봐야 하는 신호다.
-
-    한도 초과는 다시 부르지 않는다. 거부된 호출도 사용량에 잡히므로 판정 없이 예산만 태운다.
-    종료 코드가 0이 아니라는 것만으로도 다시 부르지 않는다.
+    종료 코드가 0이 아니라는 것만으로 다시 부르지 않는다. 스키마가 거절당한 경우가 그런데,
+    같은 요청을 다시 보내면 같은 400 이 온다. 실제로 그 오류에 재시도 세 번을 태운 적이 있다.
+    네트워크와 시간 초과처럼 다시 부를 이유가 분명한 것만 남긴다.
     """
-    if any(s in err for s in ("시간 초과", "timed out", "connection",
-                              "ECONNRESET", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN")):
-        return True
-    return err.startswith("파싱 실패") and n == 0
+    return any(s in err for s in ("시간 초과", "timed out", "connection",
+                                 "ECONNRESET", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN"))
+
+
+# 실패 사유가 PR 코멘트로 나가므로 CLI 가 섞어 찍는 색 코드를 지운다.
+ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 
 def _failure_reason(proc):
     """
     CLI 가 실패했을 때 사람이 읽을 이유를 만든다.
 
-    stdout 을 먼저 본다. CLI 는 진짜 이유를 거기에 싣고 stderr 에는 진행 안내만 남긴다.
-
-    Gemini CLI 는 봉투 하나에 담아 준다.
-
-        {"error": {"type": "...", "message": "...", "code": ...}}
-
-    Codex CLI 는 줄마다 이벤트를 찍었다. 그 길을 지우지 않고 뒤에 둔다. 비용이 없고,
-    CLI 를 되돌릴 때나 다른 CLI 를 끼울 때 이유가 사라지지 않는다.
+    stdout 을 먼저 본다. --json 으로 도는 CLI 가 진짜 이유를 거기에 이벤트로 싣기 때문이다.
 
         {"type":"error","message":"..."}
         {"type":"turn.failed","error":{"message":"..."}}
@@ -540,20 +540,12 @@ def _failure_reason(proc):
     이유가 없는 경우가 있다. 2026-09-24 회차에서 판정이 383건 전부 UNJUDGED 로 끝났는데,
     보고서에 남은 것이 그 진행 안내뿐이라 원인을 아무도 못 짚었다.
 
-    어느 쪽에서도 못 찾으면 그때 stderr 와 stdout 의 꼬리를 함께 붙인다. 둘 중 하나만
+    구조화된 이벤트를 못 찾으면 그때 stderr 와 stdout 의 꼬리를 함께 붙인다. 둘 중 하나만
     남기면 이번과 같은 일이 되풀이된다.
 
     ANSI 제어 문자를 지운다. 이 문자열은 PR 코멘트로 그대로 나가는데, 마크다운은 그것을
     렌더하지 않고 글자로 보여 줘서 사유 끝에 찌꺼기가 붙는다.
     """
-    err = (_envelope_of(proc.stdout) or {}).get("error")
-    if isinstance(err, dict) and err.get("message"):
-        code = err.get("code")
-        tail = f" (코드 {code})" if code is not None else ""
-        return f"{err['message']}{tail}"[:500]
-    if isinstance(err, str) and err.strip():
-        return err.strip()[:500]
-
     events = []
     for line in (proc.stdout or "").splitlines():
         line = line.strip()
@@ -575,203 +567,131 @@ def _failure_reason(proc):
                 uniq.append(m)
         return " / ".join(uniq)[:500]
 
-    e = ANSI_RE.sub("", proc.stderr or "").strip()[-300:]
+    err = ANSI_RE.sub("", proc.stderr or "").strip()[-300:]
     out = ANSI_RE.sub("", proc.stdout or "").strip()[-300:]
-    parts = [p for p in (f"stderr: {e}" if e else "", f"stdout: {out}" if out else "") if p]
+    parts = [p for p in (f"stderr: {err}" if err else "", f"stdout: {out}" if out else "") if p]
     return " | ".join(parts) or "출력이 없다"
-
-
-def _envelope_of(stdout):
-    """
-    CLI 가 --output-format json 으로 내놓은 봉투를 꺼낸다.
-
-    모양은 이렇다. 없는 칸은 빠진다.
-
-        {"session_id": "...", "response": "...", "stats": {...},
-         "error": {"type": "...", "message": "...", "code": ...}, "warnings": [...]}
-
-    봉투를 못 읽어도 빈 사전을 준다. 부르는 쪽이 종료 코드와 _failure_reason 으로
-    이어서 판단한다.
-    """
-    s = (stdout or "").strip()
-    if not s.startswith("{"):
-        # 앞에 진행 로그가 섞이면 첫 중괄호부터 잘라 본다
-        i = s.find("{")
-        if i == -1:
-            return {}
-        s = s[i:]
-    try:
-        v = json.loads(s)
-    except ValueError:
-        return {}
-    return v if isinstance(v, dict) else {}
-
-
-"""
-모델이 답을 코드 펜스로 감싸는 경우가 흔하다. 앞뒤 펜스를 벗기려고 쓴다.
-"""
-# 실패 사유가 PR 코멘트로 나가므로 CLI 가 섞어 찍는 색 코드를 지운다.
-ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
-
-FENCE_RE = re.compile(r"^\s*```(?:json)?\s*(.*?)\s*```\s*$", re.S)
-
-
-def _parse_results(response):
-    """
-    response 문자열에서 판정 목록을 꺼내 모양을 검증한다. (results, 오류) 를 준다.
-
-    Codex 는 --output-schema 로 모양을 서버에서 강제했다. Gemini CLI 에는 그 플래그가 없어서
-    response 가 그냥 문자열로 온다. 그래서 여기서 셋을 본다.
-
-        1. JSON 인가          펜스로 감싼 경우가 흔해 벗기고 본다
-        2. results 가 목록인가
-        3. 각 항목이 id 와 verdict 를 갖고, verdict 가 허용된 값인가
-
-    셋 중 하나라도 어긋나면 판정으로 안 받는다. 모양이 깨진 응답을 통과시키면 그 항목이
-    조용히 OK 로 흘러 게이트가 무력해진다. 부재를 묻는 항목이 대부분이라 특히 위험하다.
-
-    id 집합이 요청과 맞는지는 여기서 안 본다. 부르는 쪽이 complete 와 detail 로 따로 다룬다.
-    일부만 와도 온 것은 쓰는 편이 낫기 때문이다.
-    """
-    if not isinstance(response, str) or not response.strip():
-        return None, "파싱 실패: response 가 비어 있다"
-
-    text = response.strip()
-    m = FENCE_RE.match(text)
-    if m:
-        text = m.group(1).strip()
-
-    try:
-        parsed = json.loads(text)
-    except ValueError as e:
-        return None, f"파싱 실패: {e} (앞 120자: {text[:120]})"
-
-    if not isinstance(parsed, dict) or not isinstance(parsed.get("results"), list):
-        return None, "파싱 실패: results 목록이 없다"
-
-    results = parsed["results"]
-    for i, r in enumerate(results):
-        if not isinstance(r, dict):
-            return None, f"파싱 실패: results[{i}] 가 객체가 아니다"
-        if not r.get("id"):
-            return None, f"파싱 실패: results[{i}] 에 id 가 없다"
-        if r.get("verdict") not in VERDICTS:
-            return None, (f"파싱 실패: {r.get('id')} 의 verdict 가 "
-                          f"{r.get('verdict')!r} 다. 허용은 {VERDICTS}")
-    return results, None
 
 
 def _call_once(prompt, expected_ids):
     """
-    Gemini CLI 를 한 번 부른다.
+    Codex CLI 를 한 번 부른다.
 
-    프롬프트는 stdin 으로 넣는다. 인자로는 못 넣는다. 프롬프트가 50만 자를 넘어 argv 상한에
-    걸린다. CLI 의 readStdin 상한이 8MB 라 여유가 있다.
+    프롬프트는 stdin 으로 넣는다. `codex exec` 는 인자가 없으면 stdin 을 프롬프트로 읽는다.
+    Gemini 의 systemInstruction 자리가 없어 SYSTEM 을 앞에 붙인다.
 
-    systemInstruction 자리가 없어 SYSTEM 을 앞에 붙인다.
-
-    작업 루트를 빈 임시 디렉터리로 준다. 프롬프트에 diff 와 앵커와 기준 문서가 이미 다 들어
-    있어 저장소를 뒤질 필요가 없고, 빈 디렉터리는 읽기 도구가 건질 것을 없애 그 사실을 구조로
-    강제한다. 쓰기 도구는 비대화 모드에서 승인을 받을 길이 없어 거절된다.
-
-    --approval-mode 를 주지 않는다. plan 모드가 읽기 전용이라 처음에는 그것을 줬는데, 그 모드는
-    "계획을 markdown 으로 써라" 는 지시를 시스템 프롬프트에 끼워 넣는다. 아래 SYSTEM 이 요구하는
-    "JSON 객체 하나만" 과 정면으로 싸워서, 모양이 깨질 위험을 읽기 제한과 맞바꾸는 셈이 된다.
-    읽기 제한은 빈 작업 루트가 이미 맡고 있으므로 그 거래를 하지 않는다.
-
-    --skip-trust 를 준다. CLI 는 신뢰 목록에 없는 디렉터리에서 종료 코드 55 로 거절한다.
-    2026-09-25 의 첫 실행이 그것으로 판정 50건을 통째로 잃었다. 이 플래그가 하는 일은
-    GEMINI_CLI_TRUST_WORKSPACE 를 세우는 것뿐이고, 신뢰가 여는 것은 작업 루트의 프로젝트
-    설정과 확장을 CLI 가 읽어 주는 것이다. 우리 작업 루트는 방금 만든 빈 임시 디렉터리라
-    읽을 것이 없다. 그래서 여기서 신뢰해도 CLI 가 얻는 권한이 없다.
-
-    Codex 와 달리 스키마를 강제할 방법이 없다. --output-schema 에 해당하는 플래그가 CLI 에
-    없어서, 모양은 프롬프트로 요구하고 검증은 _parse_results 가 한다.
+    샌드박스를 read-only 로 두는 이유는 판정이 파일을 고칠 일이 없기 때문이다.
+    프롬프트에 diff 와 앵커와 기준 문서가 이미 다 들어 있어 저장소를 뒤질 필요도 없다.
+    작업 루트를 빈 임시 디렉터리로 주어 그 사실을 구조로 강제한다.
     """
     with tempfile.TemporaryDirectory(prefix="llm-verify-") as tmp:
-        cmd = [GEMINI_BIN, "--output-format", "json", "--skip-trust"]
-        if GEMINI_MODEL:
-            cmd += ["--model", GEMINI_MODEL]
+        schema_path = Path(tmp) / "schema.json"
+        out_path = Path(tmp) / "last-message.json"
+        schema_path.write_text(json.dumps(SCHEMA), encoding="utf-8")
+
+        cmd = [CODEX_BIN, "exec",
+               "--sandbox", "read-only",
+               "--cd", tmp,
+               "--skip-git-repo-check",
+               "--ephemeral",
+               "--ignore-user-config",
+               "--color", "never",
+               "--json",
+               "--output-schema", str(schema_path),
+               "--output-last-message", str(out_path)]
+        if CODEX_MODEL:
+            cmd += ["--model", CODEX_MODEL]
 
         try:
             proc = subprocess.run(cmd, input=SYSTEM + "\n\n" + prompt,
                                   capture_output=True, text=True,
-                                  cwd=tmp, timeout=CALL_TIMEOUT_SEC)
+                                  timeout=CALL_TIMEOUT_SEC)
         except subprocess.TimeoutExpired:
             return None, f"시간 초과 ({CALL_TIMEOUT_SEC}초)"
         except FileNotFoundError:
-            return None, f"실행 실패: {GEMINI_BIN} 를 찾을 수 없다"
+            return None, f"실행 실패: {CODEX_BIN} 를 찾을 수 없다"
 
-        envelope = _envelope_of(proc.stdout)
-
-        # CLI 가 오류를 종료 코드로만 알리지 않는다. json 봉투의 error 에 담아 0 으로 끝날 수 있다
-        if envelope.get("error"):
-            e = envelope["error"]
-            return None, f"실행 실패: {e.get('message') or e}"
+        # 모르는 모델 이름은 오류가 아니라 경고다. 그대로 두면 엉뚱한 모델로 조용히 돈다.
+        # 값이 판정 품질과 비용을 모두 바꾸므로 여기서 끊는다.
+        if "Model metadata for" in (proc.stderr or "") and "not found" in (proc.stderr or ""):
+            return None, f"알 수 없는 모델 이름: {CODEX_MODEL}"
 
         if proc.returncode != 0:
             return None, f"실행 실패 (종료 {proc.returncode}): {_failure_reason(proc)}"
 
-        results, err = _parse_results(envelope.get("response"))
-        if err:
-            return None, err
+        if not out_path.is_file():
+            return None, "실행 실패: 마지막 메시지 파일이 없다"
 
-        usage, model = _usage_of(envelope)
-        log_usage(f"{len(expected_ids)}건", len(prompt), usage, model,
+        try:
+            results = json.loads(out_path.read_text(encoding="utf-8"))["results"]
+        except Exception as e:
+            return None, f"파싱 실패: {e}"
+
+        usage, kinds = _usage_of(proc.stdout, proc.stderr)
+        log_usage(f"{len(expected_ids)}건", len(prompt), usage, kinds,
                   proc.stdout, proc.stderr)
 
     seen = {r["id"] for r in results}
     ok = seen == set(expected_ids)
     detail = "" if ok else f"응답 {len(seen)} / 요청 {len(expected_ids)}"
-    return {"results": results, "usage": usage, "model": model or GEMINI_MODEL,
+    return {"results": results, "usage": usage, "model": CODEX_MODEL,
             "complete": ok, "detail": detail}, None
 
 
-def _usage_of(envelope):
+def _usage_of(stdout, stderr):
     """
-    CLI 가 json 봉투에 실어 준 stats 에서 모델 이름과 토큰 사용량을 건진다.
+    CLI 가 --json 으로 뱉은 이벤트에서 모델 이름과 토큰 사용량을 건진다.
 
-    모양은 stats.models 가 모델 이름을 키로 갖고 그 아래 tokens 가 수를 갖는 것이다.
-    tokens 의 키에는 token 이라는 낱말이 없어서, 이름으로 훑는 방식으로는 하나도 못 건진다.
-    그래서 여기서는 자리를 고정해 읽고, 키가 바뀌면 빈 값을 돌려준다.
-
-    한 호출이 모델을 갈아타면 models 에 둘 이상이 실린다. 그때는 항목별로 더한다.
+    Gemini 는 usageMetadata 를 응답에 실어 줬는데 CLI 에는 그 자리가 없다.
+    이벤트 스키마는 판올림마다 바뀔 수 있으므로 키 이름을 넓게 훑는다.
+    이름에 token 이 들어간 정수와 model 로 보이는 문자열을 모은다.
     못 건져도 판정은 계속한다. 사용량은 비용을 보기 위한 것이지 판정에 쓰이지 않는다.
     """
-    models = ((envelope or {}).get("stats") or {}).get("models") or {}
-    if not isinstance(models, dict):
-        return {}, ""
-
-    usage = {}
-    for metrics in models.values():
-        tokens = (metrics or {}).get("tokens") if isinstance(metrics, dict) else None
-        if not isinstance(tokens, dict):
+    usage, kinds = {}, []
+    for line in (stdout or "").splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
             continue
-        for k, v in tokens.items():
-            if isinstance(v, int) and not isinstance(v, bool):
-                usage[k] = usage.get(k, 0) + v
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        kind = ev.get("type") or ev.get("event") or ev.get("msg", {}).get("type")
+        if isinstance(kind, str) and kind not in kinds:
+            kinds.append(kind)
+        stack = [ev]
+        while stack:
+            o = stack.pop()
+            if isinstance(o, dict):
+                for k, v in o.items():
+                    if isinstance(v, (dict, list)):
+                        stack.append(v)
+                    elif isinstance(v, int) and "token" in k.lower():
+                        usage[k] = v
+                    # 키 이름을 고정하지 않는다. 판올림마다 model, model_slug,
+                    # effective_model 처럼 이름이 갈려서 하나만 보면 놓친다
+            elif isinstance(o, list):
+                stack.extend(o)
+    return usage, kinds
 
-    # 0 만 실린 항목은 지운다. 자리만 차지하고 비용 근거가 되지 않는다.
-    usage = {k: v for k, v in usage.items() if v}
-    return usage, ", ".join(sorted(models))
 
-
-def log_usage(label, prompt_chars, usage, model, stdout, stderr):
+def log_usage(label, prompt_chars, usage, kinds, stdout, stderr):
     """
     호출 하나의 비용 근거를 남긴다.
 
     못 건졌으면 그 사실과 함께 CLI 출력의 끝부분을 남긴다.
     형식을 모르는 채로 다음 판올림을 기다리는 것보다 한 번 보고 고치는 편이 빠르다.
     """
-    # CLI 가 실제로 쓴 모델을 stats 가 알려준다. 못 읽었을 때만 우리가 넘긴 값으로 적는다.
-    used = model or GEMINI_MODEL or "(CLI 기본값)"
+    # 모델은 이벤트에서 못 읽는다. --json 을 주면 CLI 가 헤더를 아예 안 찍는다.
+    # 대신 우리가 넘긴 값을 적는다. 그 이름이 틀렸으면 CLI 가 경고를 내므로 아래에서 잡는다.
+    used = CODEX_MODEL or "(CLI 기본값)"
     if usage:
         parts = ", ".join(f"{k} {v:,}" for k, v in sorted(usage.items()))
         print(f"  사용량 {label}  모델 {used}  {parts}  (프롬프트 {prompt_chars:,}자)",
               file=sys.stderr)
     else:
         tail = ((stderr or "") + (stdout or ""))[-400:].replace("\n", " | ")
-        print(f"  사용량 {label}  모델 {used}  토큰 정보를 못 찾았다 "
+        print(f"  사용량 {label}  모델 {model or '?'}  토큰 정보를 못 찾았다 "
               f"(프롬프트 {prompt_chars:,}자). 출력 끝: {tail}", file=sys.stderr)
 
 
@@ -1132,8 +1052,8 @@ def main():
 
     # 인증은 CLI 가 맡는다. 여기서는 그 CLI 가 있는지만 본다.
     # 로그인이 안 되어 있으면 첫 호출이 실패하며 그 사유가 그대로 리포트에 실린다.
-    if not args.dry_run and shutil.which(GEMINI_BIN) is None:
-        print(f"{GEMINI_BIN} 를 찾을 수 없다. 러너에서 설치와 로그인을 먼저 한다", file=sys.stderr)
+    if not args.dry_run and shutil.which(CODEX_BIN) is None:
+        print(f"{CODEX_BIN} 를 찾을 수 없다. 러너에서 설치와 로그인을 먼저 한다", file=sys.stderr)
         return 1
 
     if args.dry_run:
