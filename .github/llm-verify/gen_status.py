@@ -77,9 +77,18 @@ def main():
         "backend 앵커 규칙": ((R["backend"] / ".github/llm-verify/anchors.yml").is_file(),
                           f"규칙 {len(anchors['rules'])}개"),
         "infra 앵커 규칙": ((R["infra"] / ".github/llm-verify/anchors.yml").is_file(), ""),
-        "G-PR 호출자 워크플로": ((R["backend"] / ".github/workflows/llm-verify.yml").is_file(), ""),
+        # 호출자 파일 이름을 하나로 못 박지 않는다.
+        #
+        # 예전에는 backend 에 llm-verify.yml 이 따로 있었는데 G-BUILD 와 합쳐 pr-gate.yml 이
+        # 되었고, 이 탐지는 그대로 남아 워크플로가 있는데도 "없음" 이라고 적고 있었다.
+        # 본체를 부르는 파일이 무엇이든 찾도록 내용을 본다.
+        "G-PR 호출자 워크플로": (any(
+            "llm-verify.yml@" in f.read_text(encoding="utf-8", errors="replace")
+            for f in sorted((R["backend"] / ".github/workflows").glob("*.yml"))), ""),
         "G-PR 본체 워크플로": ((R["common"] / ".github/workflows/llm-verify.yml").is_file(), ""),
-        "G-LOCAL 절차": ((R["backend"] / ".claude/commands/verify.md").is_file(), ""),
+        # G-LOCAL 은 스크립트가 정본이고 에이전트 명령은 그 진입점일 뿐이다.
+        # 명령 파일 이름만 보고 있어서 verify.sh 가 있는데도 "절차 없음" 이라고 적고 있었다.
+        "G-LOCAL 절차": ((R["backend"] / "verify.sh").is_file(), ""),
         "레지스트리 검사 워크플로": (
             all((R[r] / ".github/workflows/registry-check.yml").is_file() for r in REPOS),
             "3개 저장소"),
@@ -108,7 +117,9 @@ def main():
     w("|---|---|---|---|")
     ok_build = have["backend/build.gradle"][0]
     ok_code = have["backend 의 Java 코드"][0]
-    w(f"| G-LOCAL | Claude, 로컬 | 안 함 | "
+    # 여기도 도구 이름을 박지 않는다. verify.sh 가 --agent 로 CLI 를 받아 엔진에 묶이지 않고,
+    # 팀원마다 쓰는 에이전트가 다르다.
+    w(f"| G-LOCAL | LLM, 개발자 로컬 | 안 함 | "
       f"{'돈다' if have['G-LOCAL 절차'][0] else '**절차 없음**'}"
       f"{'' if ok_code else '. 판정 대상 코드가 없어 기본 집합만 켜진다'} |")
     w(f"| G-BUILD | Gradle, SonarQube | **함** | "
