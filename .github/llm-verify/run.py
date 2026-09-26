@@ -590,8 +590,8 @@ SYSTEM = """너는 웹 백엔드 코드 리뷰어다. 주어진 점검 항목 �
    점검 항목 본문의 일반론과 다르다는 이유로 위반이라고 답하지 않는다.
 7. 앵커 파일은 diff 에 없어도 첨부된 것이다. "저장소에 존재하지 않는 경로" 목록은
    검색 실패가 아니라 부재의 확인이므로, 무언가가 없다는 판정의 근거로 그대로 쓴다.
-8. 해당 없는 필드는 null 로 둔다. 위반이 아니면 file, line, fix 가 null 이다.
-9. reason 과 fix 는 한국어로 각각 한 문장씩 쓴다.
+8. 해당 없는 필드는 null 로 둔다. 위반이 아니면 file, line 이 null 이다.
+9. reason 은 한국어로 한 문장을 쓴다.
    다만 항목 ID, verdict, 파일 경로, 클래스명, 메서드명, 설정 키와 값은 원문 그대로 둔다.
    번역하면 검색과 대조가 깨진다.
 """
@@ -603,7 +603,7 @@ SYSTEM = """너는 웹 백엔드 코드 리뷰어다. 주어진 점검 항목 �
 #   Invalid schema for response_format: 'additionalProperties' is required to be supplied and to be false
 #
 # 그래서 "선택 필드" 를 required 에서 빼는 방식이 안 된다. 대신 null 을 허용해 같은 뜻을 만든다.
-# 위반이 아닌 항목은 file, line, reason, fix 를 null 로 답한다.
+# 위반이 아닌 항목은 file, line, reason 을 null 로 답한다.
 SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -619,9 +619,8 @@ SCHEMA = {
                     "file": {"type": ["string", "null"]},
                     "line": {"type": ["integer", "null"]},
                     "reason": {"type": ["string", "null"]},
-                    "fix": {"type": ["string", "null"]},
                 },
-                "required": ["id", "verdict", "file", "line", "reason", "fix"],
+                "required": ["id", "verdict", "file", "line", "reason"],
             },
         }
     },
@@ -954,8 +953,6 @@ def render(ctx):
             L.append(f"- 기준: {origin(it)}")
             L.append(f"- `{r.get('file')}:{r.get('line')}`")
             L.append(f"- {r.get('reason','')}")
-            if r.get("fix"):
-                L.append(f"- 고치기: {r['fix']}")
             L.append("")
     elif ctx["unjudged"]:
         # 판정이 안 된 것과 위반이 없는 것은 다르다.
