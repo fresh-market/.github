@@ -196,7 +196,38 @@ def active_items(rules, registries):
 
 # --- 9~12단계: 입력 수집 ---------------------------------------------------
 
-def read_files(root, patterns, limit_bytes=400_000, priority=()):
+def _fair_shares(needs, budget):
+    """
+    글롭마다 예산 몫을 정한다. 적게 쓰는 글롭이 남긴 몫이 많이 쓰는 글롭으로 넘어간다.
+
+    needs 는 글롭별 필요 바이트다. 최대최소 공정 배분이다. 모두에게 같은 몫을 주고,
+    그보다 적게 필요한 글롭이 남긴 몫을 나머지가 다시 같게 나눈다. 더 나눌 것이 없을
+    때까지 되풀이한다.
+
+    이렇게 하는 이유는 배급 순서가 곧 배급량이 되는 것을 끊기 위해서다. 글롭이 알파벳순으로
+    오는데 그대로 앞에서부터 다 주면 뒤쪽 글롭이 굶는다. 2026-09-25 에 마이그레이션 번호를
+    바꾸는 PR 을 판정하면서 정작 그 마이그레이션 파일 30개 중 27개가 잘렸다.
+    src/main/resources 가 src/main/java 보다 알파벳순으로 뒤라서다.
+    """
+    left = {k: v for k, v in needs.items() if v > 0}
+    out = {k: 0 for k in needs}
+    while left and budget > 0:
+        even = budget // len(left)
+        if even == 0:
+            break
+        done = [k for k, v in left.items() if v <= even]
+        if not done:
+            for k in left:
+                out[k] += even
+            break
+        for k in done:
+            out[k] += left[k]
+            budget -= left[k]
+            del left[k]
+    return out
+
+
+def read_files(root, patterns, limit_bytes=400_000, priority=(), slicer=None):
     """
     앵커 파일을 읽는다. 결과를 셋으로 나눈다.
 
@@ -211,12 +242,22 @@ def read_files(root, patterns, limit_bytes=400_000, priority=()):
     앵커 글롭에 걸리는데, CI 는 새로 체크아웃해 build 가 없고 로컬은 빌드한 뒤라 있다.
     그대로 두면 같은 커밋인데 판정 입력이 로컬과 CI 에서 달라진다.
 
-    priority 는 이 PR 이 건드린 앵커 파일이다. 예산을 이쪽부터 쓴다.
+    예산을 셋으로 나눠 쓴다.
 
-    부르는 쪽이 글롭을 정렬해 넘기므로 패턴 순서가 알파벳순이다. 그대로 두면 이번 PR 과
-    무관한 파일이 자리를 먼저 먹는다. 2026-09-24 실측에서 entity 와 repository 글롭이
-    예산 40만을 거의 다 채워 service 글롭에 21,535 바이트만 남았고, 쿠폰 서비스를 고친
-    PR 인데 정작 그 파일이 빠지고 admin 파일이 예산을 썼다.
+    첫째로 priority 다. 이 PR 이 건드린 앵커 파일이고 무조건 먼저 읽는다.
+
+    둘째로 글롭별 몫이다. 남은 예산을 _fair_shares 로 나눈다. 순서가 배급량이 되는 것을
+    끊기 위해서다. 파일은 그것을 잡은 첫 글롭에만 셈한다. 같은 파일을 두 글롭이 잡으면
+    양쪽에서 세어 필요량이 부풀고 몫이 엉킨다.
+
+    셋째로 몫이 모자란 글롭은 slicer 를 거친다. 통째로 버리는 것보다 껍데기라도 싣는 편이
+    낫다. slicer 는 (경로, 본문) 을 받아 (자른 본문, 정보) 를 주고, 자를 수 없으면 원본을
+    그대로 준다. 경로를 함께 받는 이유는 확장자마다 자르는 규칙이 다르기 때문이다.
+
+    마지막으로 남은 예산을 쓸어 담는다. 몫은 보장선이지 상한이 아니다. 몫만으로 끊으면
+    글롭마다 자리가 조금씩 남아 예산이 통째로 버려진다. 실측에서 그 낭비가 18,674 바이트였고
+    몫을 넣기 전보다 읽은 파일이 오히려 줄었다. 작은 파일부터 담아 같은 예산으로 더 많은
+    근거를 산다. 그래도 안 들어가는 파일은 failed 로 남긴다.
 
     priority 는 부재 판정에 안 쓰이므로 absent 에 넣지 않는다. 글롭이 아니라 경로라서
     "이 패턴에 해당하는 파일이 없다" 라는 뜻을 만들 수 없기 때문이다.
@@ -226,33 +267,33 @@ def read_files(root, patterns, limit_bytes=400_000, priority=()):
         tracked = set(git(root, "ls-files").splitlines())
     except RuntimeError:
         tracked = None
-    got, absent, failed, total = {}, [], [], 0
+    got, absent, failed = {}, [], []
 
-    def take(f):
-        """예산 안이면 읽어 담는다."""
-        nonlocal total
-        rel = str(f.relative_to(root))
-        if rel in got:
-            return
+    def readable(f):
         try:
-            text = f.read_text(encoding="utf-8", errors="replace")
+            return f.read_text(encoding="utf-8", errors="replace")
         except OSError as e:
-            failed.append(f"{rel} ({e})")
-            return
-        if total + len(text) > limit_bytes:
-            failed.append(f"{rel} (용량 상한 초과)")
-            return
-        got[rel] = text
-        total += len(text)
+            failed.append(f"{str(f.relative_to(root))} ({e})")
+            return None
 
+    spent = 0
     for rel in priority:
         f = root / rel
-        if not f.is_file():
+        if not f.is_file() or rel in got:
             continue
         if tracked is not None and rel not in tracked:
             continue
-        take(f)
+        text = readable(f)
+        if text is None:
+            continue
+        if spent + len(text) > limit_bytes:
+            failed.append(f"{rel} (용량 상한 초과)")
+            continue
+        got[rel] = text
+        spent += len(text)
 
+    # 글롭마다 자기가 처음 잡은 파일만 갖는다
+    owned, seen = {}, set(got)
     for pattern in patterns:
         hits = [f for f in sorted(root.glob(pattern)) if f.is_file()]
         if tracked is not None:
@@ -260,9 +301,159 @@ def read_files(root, patterns, limit_bytes=400_000, priority=()):
         if not hits:
             absent.append(pattern)
             continue
+        mine = []
         for f in hits:
-            take(f)
+            rel = str(f.relative_to(root))
+            if rel in seen:
+                continue
+            seen.add(rel)
+            mine.append(f)
+        owned[pattern] = mine
+
+    sizes = {p: {f: f.stat().st_size for f in fs} for p, fs in owned.items()}
+    shares = _fair_shares({p: sum(v.values()) for p, v in sizes.items()},
+                          max(limit_bytes - spent, 0))
+
+    leftover = []
+    for pattern, files in owned.items():
+        share = shares.get(pattern, 0)
+        slice_all = slicer is not None and sum(sizes[pattern].values()) > share
+        used = 0
+        for f in files:
+            rel = str(f.relative_to(root))
+            text = readable(f)
+            if text is None:
+                continue
+            if slice_all:
+                text = slicer(rel, text)[0]
+            if used + len(text) > share:
+                leftover.append((len(text), rel, text))
+                continue
+            got[rel] = text
+            used += len(text)
+        spent += used
+
+    for size, rel, text in sorted(leftover):
+        if spent + size > limit_bytes:
+            failed.append(f"{rel} (용량 상한 초과)")
+            continue
+        got[rel] = text
+        spent += size
+
     return got, absent, failed
+
+
+# --- Java 좁히기 -------------------------------------------------------
+
+_TYPE_KW = re.compile(r"\b(class|interface|enum|record)\b|@interface")
+
+
+def line_depths(text):
+    """
+    줄마다 그 줄이 시작할 때의 중괄호 깊이를 센다. (깊이 목록, 마지막 깊이) 를 준다.
+
+    문자열과 주석 안의 중괄호는 세지 않는다. 세면 깊이가 어긋나 엉뚱한 줄을 지운다.
+    이 저장소에는 JPQL 과 로그 형식 문자열에 중괄호가 흔하다.
+    """
+    depth, i, n = 0, 0, len(text)
+    out = [0]
+    while i < n:
+        c = text[i]
+        two = text[i:i + 2]
+        if two == "//":
+            j = text.find("\n", i)
+            i = n if j == -1 else j
+        elif two == "/*":
+            j = text.find("*/", i + 2)
+            end = n if j == -1 else j + 2
+            out.extend(depth for ch in text[i:end] if ch == "\n")
+            i = end
+        elif text[i:i + 3] == '"""':
+            j = text.find('"""', i + 3)
+            end = n if j == -1 else j + 3
+            out.extend(depth for ch in text[i:end] if ch == "\n")
+            i = end
+        elif c in '"\'':
+            q, i = c, i + 1
+            while i < n and text[i] != q:
+                i += 2 if text[i] == "\\" else 1
+            i += 1
+        else:
+            if c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+            elif c == "\n":
+                out.append(depth)
+            i += 1
+    return out, depth
+
+
+JAVA_SLICE_NOTE = ("// 앵커 예산이 모자라 이 파일은 메서드 본문을 지우고 실었다.\n"
+        "// 패키지, import, 애너테이션, 필드, 시그니처, 중첩 타입은 그대로다.\n"
+        "// 본문을 봐야 답하는 항목은 이 파일을 근거로 OK 를 내지 말고"
+        " INSUFFICIENT_EVIDENCE 로 답한다.\n")
+
+
+def slice_java(text, min_gain=0.15):
+    """
+    메서드와 생성자의 본문만 지운다. (자른 본문, (지운 줄, 전체 줄)) 을 준다.
+
+    남기는 것은 패키지, import, 애너테이션, 타입 선언, 필드, 시그니처다. 점검 항목의
+    다수가 그것으로 판정된다. @Transactional 이 붙었는지, 반환형이 Optional 인지,
+    필드가 final 인지는 본문 없이 답한다.
+
+    중첩 타입은 건드리지 않는다. 이 저장소의 DTO 가 record 라 그 안이 깊이 2 인데
+    거기까지 지우면 필드가 사라져 판정 근거가 끊긴다.
+
+    깊이가 0 으로 안 돌아오거나 줄어드는 양이 min_gain 에 못 미치면 원본을 돌려준다.
+    잘라서 근거를 잃는 것보다 큰 편이 낫다. slice_ddl 과 같은 태도다.
+    """
+    lines = text.split("\n")
+    depths, last = line_depths(text)
+    if last != 0 or len(depths) < len(lines):
+        return text, None
+
+    out, skip_at, dropped = [], None, 0
+    for i, line in enumerate(lines):
+        d = depths[i]
+        if skip_at is not None:
+            end = depths[i + 1] if i + 1 < len(depths) else d
+            if d <= skip_at:
+                skip_at = None
+            elif end <= skip_at:
+                # 본문을 닫는 줄이다. 이것까지 지우면 괄호 짝이 깨져 파일이 안 읽힌다
+                out.append(line)
+                skip_at = None
+                dropped += 1
+                continue
+            else:
+                dropped += 1
+                continue
+        out.append(line)
+        s = line.strip()
+        nxt = depths[i + 1] if i + 1 < len(depths) else d
+        if (d >= 1 and nxt > d and s.endswith("{")
+                and "(" in s and ")" in s and not _TYPE_KW.search(s)):
+            out.append(" " * (len(line) - len(line.lstrip())) + "    // 본문 생략")
+            skip_at = d
+    if not dropped:
+        return text, None
+    sliced = JAVA_SLICE_NOTE + "\n".join(out)
+    if len(sliced) > len(text) * (1 - min_gain):
+        return text, None
+    return sliced, (dropped, len(lines))
+
+def slice_anchor(rel, text):
+    """
+    read_files 가 부르는 좁히기다. 확장자로 규칙을 고른다.
+
+    SQL 은 여기서 안 자른다. slice_ddl 이 바뀐 엔티티가 쓰는 테이블만 남기는 방식으로
+    따로 다루고, 그쪽은 예산과 무관하게 언제나 돈다.
+    """
+    if rel.endswith(".java"):
+        return slice_java(text)
+    return text, None
 
 
 # --- DDL 좁히기 ---------------------------------------------------------
@@ -841,8 +1032,17 @@ def render(ctx):
                  + ", ".join(f"`{p}`" for p in ctx["absent"][:8]))
         L.append("")
     if ctx["missing_anchors"]:
-        L.append("**읽지 못한 앵커** " + ", ".join(f"`{m}`" for m in ctx["missing_anchors"][:10])
+        n = len(ctx["missing_anchors"])
+        more = f" 그 밖 {n - 10}건." if n > 10 else ""
+        L.append(f"**읽지 못한 앵커 {n}건** "
+                 + ", ".join(f"`{m}`" for m in ctx["missing_anchors"][:10]) + more
                  + "  -> 이것에 의존한 항목은 `INSUFFICIENT_EVIDENCE` 다")
+        L.append("")
+    if ctx["sliced"]:
+        L.append(f"**본문을 지우고 실은 앵커 {len(ctx['sliced'])}건** "
+                 + ", ".join(f"`{m}`" for m in ctx["sliced"][:10])
+                 + "  -> 애너테이션과 시그니처와 필드는 그대로다. "
+                 "본문을 봐야 하는 항목은 `INSUFFICIENT_EVIDENCE` 다")
         L.append("")
     if ctx["suppressed"]:
         L.append(f"`defers_to` 로 억제된 중복 지적 {len(ctx['suppressed'])}건")
@@ -1012,8 +1212,14 @@ def main():
 
     # 이번 PR 이 건드린 앵커 파일에 예산을 먼저 준다. 근거는 read_files 의 docstring 에 있다
     changed_anchors = [f for f in files if matches(f, anchor_patterns)]
+    # slicer 는 몫이 모자란 글롭에만 쓰인다. 근거는 read_files 의 docstring 에 있다
     anchor_files, absent, failed = read_files(
-        args.backend, anchor_patterns, priority=changed_anchors)
+        args.backend, anchor_patterns, priority=changed_anchors,
+        slicer=slice_anchor)
+
+    # 자른 파일은 got 에 들어 있어 실패로 안 잡힌다. 사람이 볼 수 있게 따로 센다.
+    sliced_anchors = sorted(k for k, v in anchor_files.items()
+                            if v.startswith(JAVA_SLICE_NOTE))
 
     # 스키마는 바뀐 엔티티가 쓰는 테이블만 남긴다. 앵커 분량의 대부분이 이 파일이다.
     # 어느 테이블인지 알 수 없으면 통째로 둔다.
@@ -1148,6 +1354,7 @@ def main():
         "conflicting": conflicting, "insufficient": insufficient,
         "unjudged": unjudged, "counts": counts,
         "missing_anchors": failed + missing_docs,
+        "sliced": sliced_anchors,
         "absent": absent, "suppressed": suppressed,
     }
     Path(args.out).write_text(render(ctx), encoding="utf-8")
