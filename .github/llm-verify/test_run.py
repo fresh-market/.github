@@ -353,6 +353,70 @@ class SliceJavaTest(unittest.TestCase):
 
 
 
+class ExitCodeTest(unittest.TestCase):
+    """
+    판정하지 못한 항목이 있으면 종료 코드가 1 이다.
+
+    여태 0 이었다. 그래서 판정을 한 건도 못 했는데 체크가 초록이었다. 2026-09-24 에 한도가
+    말라 383건 전부 UNJUDGED 로 끝난 회차가 초록이었고 아무도 몇 주 동안 몰랐다.
+    2026-09-25 에는 같은 일을 하루에 네 번 봤다.
+
+    보고서는 이미 "통과가 아니다" 라고 적는데 체크만 반대로 말하고 있었다. 사람은 코멘트를
+    열기 전에 체크 색을 먼저 본다. 이 시험이 그 둘을 같은 뜻으로 묶어 둔다.
+
+    run.py 의 main 을 통째로 부르는 것은 git 저장소 셋과 판정 엔진이 필요해 여기서 못 한다.
+    대신 종료 코드를 정하는 조건을 그대로 복제해 시험한다. 조건이 바뀌면 이 시험이 먼저 깨진다.
+    """
+
+    def _exit_code(self, unjudged, stages):
+        """run.py 말미의 판단을 그대로 옮긴 것이다."""
+        if unjudged:
+            return 1
+        return 0
+
+    def test_전부_판정하면_0_이다(self):
+        self.assertEqual(self._exit_code([], {1: {"error": None}}), 0)
+
+    def test_한_건도_못_판정하면_1_이다(self):
+        """2026-09-24 회차다. 383건 전부 미판정인데 초록이었다."""
+        self.assertEqual(self._exit_code(["A-1"] * 383, {1: {"error": "한도 초과"}}), 1)
+
+    def test_일부만_못_판정해도_1_이다(self):
+        """2026-09-25 의 #138 이다. 235건은 판정됐고 2단계 148건이 죽었는데 초록이었다."""
+        self.assertEqual(
+            self._exit_code(["A-1"] * 148,
+                            {1: {"error": None}, 2: {"error": "일일 한도 소진"}}), 1)
+
+    def test_실제_소스가_이_조건을_쓰는지_확인한다(self):
+        """
+        위 세 시험은 복제본을 보므로 원본이 바뀌어도 안 깨진다. 그래서 원본을 직접 읽는다.
+
+        continue-on-error 로 다시 덮이거나 return 0 으로 되돌아가는 것을 막는 자리다.
+        """
+        src = (HERE / "run.py").read_text(encoding="utf-8")
+        self.assertIn("if unjudged:", src)
+        self.assertRegex(src, r"if unjudged:(?:.|\n)*?return 1")
+
+    def test_워크플로가_판정_실패를_삼키지_않는다(self):
+        """
+        continue-on-error 가 붙으면 run.py 가 1 로 끝내도 체크가 초록이 된다.
+
+        낱말로 찾지 않고 YAML 키로 본다. 이 워크플로의 주석에 "continue-on-error 를 붙이지
+        않는다" 라고 적혀 있어서, 낱말로 찾으면 그 주석이 잡힌다.
+        """
+        wf = HERE.parent / "workflows" / "llm-verify.yml"
+        if not wf.exists():
+            self.skipTest("워크플로를 찾을 수 없다")
+        import yaml
+        doc = yaml.safe_load(wf.read_text(encoding="utf-8"))
+        for job_name, job in (doc.get("jobs") or {}).items():
+            self.assertNotIn("continue-on-error", job, f"잡 {job_name}")
+            for step in (job.get("steps") or []):
+                self.assertNotIn("continue-on-error", step,
+                                 f"스텝 {step.get('name') or step.get('uses')}")
+
+
+
 class FailureReasonTest(unittest.TestCase):
     """
     판정이 실패했을 때 사람이 읽을 이유를 만든다.

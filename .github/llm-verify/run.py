@@ -1360,6 +1360,26 @@ def main():
     Path(args.out).write_text(render(ctx), encoding="utf-8")
     print(f"활성 {len(active)} / 판정 {len(judged)} / 위반 {len(violations)} "
           f"(신규 {len(new)}) / 미판정 {len(unjudged)}")
+
+    # 물어본 것에 답이 안 왔으면 실패로 끝낸다.
+    #
+    # 여태 0 으로 끝냈다. 그래서 판정을 한 건도 못 했는데 체크가 초록이었다. 2026-09-24 에
+    # 한도가 말라 383건 전부 UNJUDGED 로 끝난 회차가 초록이었고, 아무도 그 사실을 몇 주 동안
+    # 몰랐다. 2026-09-25 에는 같은 일을 하루에 네 번 봤다.
+    #
+    # 보고서는 이미 "통과가 아니다" 라고 적는데 체크만 반대로 말하고 있었다. 사람은 코멘트를
+    # 열기 전에 체크 색을 먼저 본다. 둘을 같은 뜻으로 맞춘다.
+    #
+    # 병합은 막히지 않는다. develop 의 필수 체크는 G-BUILD 하나이고 G-PR 은 거기 없다.
+    # 차단은 결정론적인 게이트만 한다는 원칙(qa-llm-verification.md)을 그대로 지킨다.
+    #
+    # 정상적인 미판정이라는 것은 없다. 로컬로 이관한 항목은 active 에서 이미 빠졌고,
+    # unjudged 에 남는 것은 물어봤는데 답이 안 온 것뿐이다.
+    if unjudged:
+        broken = [f"{k}단계: {v['error']}" for k, v in sorted(stages.items()) if v["error"]]
+        print(f"::error::판정하지 못한 항목이 {len(unjudged)}건이다. 통과가 아니다"
+              + (". " + " / ".join(broken) if broken else ""), file=sys.stderr)
+        return 1
     return 0
 
 
