@@ -164,6 +164,6 @@ uk_mc_coupon_member   1인 1매
 |---|---|
 | [devjohnpark](https://github.com/devjohnpark) | 선착순 쿠폰 / 인프라 / 공통 모듈 / 코드 검증 시스템 |
 | [muzimzz](https://github.com/muzimzz) | 회원 / 인증 / 주문 / 결제 / 장바구니 |
-| [jaeungchoi](https://github.com/jaeungchoi) | 상품 / 옵션 / 상품 이미지 / 재고 |
+| [yongmaru789](https://github.com/yongmaru789) | 상품 / 옵션 / 상품 이미지 / 재고 |
 | [gyudongjeong](https://github.com/gyudongjeong) | 관리자 계정 / 인증 / 감사 로그 |
 | [taejoong15](https://github.com/taejoong15) | 재고(로트) / 캠페인 대상 / 상품 |
