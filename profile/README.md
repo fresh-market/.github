@@ -136,18 +136,20 @@ uk_mc_coupon_member   1인 1매
 
 팀이 장애를 주입해서 계측했다. 부하를 먼저 띄우고 램프가 오르는 중에 장애를 걸었다. 재건 설계는 `rebuild-v4` 다.
 
-| 장애 | 발급 | 결번(빈 순번) | 초과 발급 | `http` p99 |
-|---|---:|---:|---:|---:|
-| 스프링 서버 1대 비정상 종료 | **10,000** | **0** | 0 | **0.134초** |
-| 캐시 키 전부 소실 | **10,000** | **0** | 0 | 0.536초 |
-| 캐시 Multi-AZ 페일오버 | 9,633 | 5 | 0 | 0.974초 |
-| 스프링 서버 1대 종료 + 캐시 페일오버 | 9,720 | **0** | 0 | 0.570초 |
+| 장애 | 회차 | 발급 | 미확정 번호 | 초과 발급 | `http` p99 | 실패율 |
+|---|---|---:|---:|---:|---:|---:|
+| 스프링 서버 1대 비정상 종료 | T-1 | **10,000** | **0** | 0 | 134.35ms | 25.23% |
+| **캐시 키 전부 소실** | **S-1** | **10,000** | **0** | 0 | **535.50ms** | **0.00%** |
+| 캐시 Multi-AZ 페일오버 | S-4 | 9,642 | 5 | 0 | 973.67ms | **0.00%** |
+| 스프링 서버 1대 종료 + 캐시 페일오버 | S-3 | 9,723 | **0** | 0 | 569.75ms | 30.31% |
 
-**4회차 다 초과 발급 0 이고 1인 1매가 지켜졌다.** DB 의 `uk_mc_coupon_member` 와 `uk_mc_coupon_seq` 가 마지막 선이라, 재건이 실패해도 결번이 날 뿐 초과 발급은 안 난다.
+**4회차 다 초과 발급 0 이고 1인 1매가 지켜졌다.** DB 의 `uk_mc_coupon_member` 와 `uk_mc_coupon_seq` 가 마지막 선이라, 재건이 실패해도 미확정 번호가 남을 뿐 초과 발급은 안 난다.
 
 **p99 도 4회차 다 SLO 1초 안이다.** 이 값은 `http_req_duration` 이라 혼잡(503)과 게이트웨이 실패(502, 504)까지 담는다.
 
-**결번은 재고 손실이 아니라 아직 안 걷힌 번호다.** 번호만 받고 사라진 요청의 번호는 번호 회수 기준 시간이 지나면 서버가 걷어 다음 사람에게 발급한다. 페일오버 회차는 재고 353장을 남기고 부하가 끝나 소진에 닿지 못했고, 그래서 그 경로가 1번도 안 열렸다.
+**실패율이 있는 회차는 스프링 서버를 죽인 회차뿐이고 그 실패는 전부 게이트웨이 실패다.** 서버가 죽은 탓이지 발급 로직이 틀린 것이 아니다. 다만 **그 요청들이 답을 못 받아 p99 모집단에서 빠지므로** T-1 과 S-3 의 p99 는 가로로 비교할 수 없다.
+
+**미확정 번호는 재고 손실이 아니라 아직 안 걷힌 번호다.** 번호만 받고 사라진 요청의 번호는 번호 회수 기준 시간이 지나면 서버가 걷어 다음 사람에게 발급한다. 페일오버 회차는 재고 353장을 남기고 부하가 끝나 소진에 닿지 못했고, 그래서 그 경로가 1번도 안 열렸다.
 
 ---
 
@@ -157,7 +159,7 @@ uk_mc_coupon_member   1인 1매
 |---|---|
 | [fm-backend README](https://github.com/fresh-market/fm-backend) | 기획부터 부하 시험까지 전체 |
 | [coupon.md](https://github.com/fresh-market/fm-backend/blob/main/docs/coupon/coupon.md) | 선착순 쿠폰 설계 전체 |
-| [coupon-redis-keys.md](https://github.com/fresh-market/fm-backend/blob/main/docs/coupon/coupon-redis-keys.md) | 발급이 쓰는 Redis 키 6개 |
+| [coupon-redis-keys.md](https://github.com/fresh-market/fm-backend/blob/main/docs/coupon/coupon-redis-keys.md) | 발급이 쓰는 키 4개와 재건이 쓰는 키 2개 |
 | [rebuild-v4/design.md](https://github.com/fresh-market/fm-backend/blob/main/docs/coupon/rebuild-v4/design.md) | 지금 도는 재건이 무엇이고 어떤 순서로 도나 |
 | [coupon-failure.md](https://github.com/fresh-market/fm-backend/blob/main/docs/coupon/coupon-failure.md) | 발급이 장애에 어떻게 반응하나 |
 
